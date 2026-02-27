@@ -68,7 +68,6 @@ Pre-built REST API sub-router. Mount it on any path.
 
 ```ts
 interface GlideMQApiConfig {
-  prefix?: string;      // Route prefix
   queues?: string[];    // Restrict to specific queues
 }
 ```
@@ -169,11 +168,18 @@ app.post('/send-email', async (c) => {
 
 ## Shutdown
 
-```ts
-import { glideMQ } from '@glidemq/hono';
-import { QueueRegistryImpl } from '@glidemq/hono';
+For graceful shutdown, construct the registry yourself and pass it to `glideMQ()`:
 
-const registry = new QueueRegistryImpl(config);
+```ts
+import { glideMQ, glideMQApi, QueueRegistryImpl } from '@glidemq/hono';
+
+const registry = new QueueRegistryImpl({
+  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
+  queues: { emails: { processor: processEmail } },
+});
+
+app.use(glideMQ(registry));
+app.route('/api/queues', glideMQApi());
 
 process.on('SIGTERM', async () => {
   await registry.closeAll();

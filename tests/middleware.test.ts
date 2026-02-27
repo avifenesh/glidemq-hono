@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import type { GlideMQEnv } from '../src/types';
 import { glideMQ } from '../src/middleware';
+import { QueueRegistryImpl } from '../src/registry';
 
 describe('glideMQ middleware', () => {
   it('injects registry into c.var.glideMQ', async () => {
@@ -68,5 +69,24 @@ describe('glideMQ middleware', () => {
 
   it('throws if no connection and not testing', () => {
     expect(() => glideMQ({ queues: { test: {} } })).toThrow('connection is required');
+  });
+
+  it('accepts a pre-constructed QueueRegistry', async () => {
+    const registry = new QueueRegistryImpl({ queues: { emails: {} }, testing: true });
+    const app = new Hono<GlideMQEnv>();
+    app.use(glideMQ(registry));
+
+    app.get('/check', (c) => {
+      return c.json({
+        testing: c.var.glideMQ.testing,
+        names: c.var.glideMQ.names(),
+      });
+    });
+
+    const res = await app.request('/check');
+    const body = await res.json();
+
+    expect(body.testing).toBe(true);
+    expect(body.names).toEqual(['emails']);
   });
 });

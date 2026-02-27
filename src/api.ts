@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { GlideMQEnv, GlideMQApiConfig, QueueRegistry } from './types';
 import { serializeJob, serializeJobs } from './serializers';
 import { buildSchemas, getZValidator, hasZod } from './schemas';
@@ -29,8 +30,12 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   const api = new Hono<GlideMQEnv>();
 
+  api.onError((_err, c) => {
+    return c.json({ error: 'Internal server error' }, 500);
+  });
+
   // Guard: ensure queue exists and is allowed
-  api.use('/:name/*', async (c, next) => {
+  const guardQueue = async (c: Context<GlideMQEnv>, next: () => Promise<void>) => {
     const name = c.req.param('name');
     const registry = getRegistry(c);
 
@@ -41,26 +46,15 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       return c.json({ error: `Queue "${name}" is not configured` }, 404);
     }
     await next();
-  });
+  };
 
-  // Also guard bare /:name routes (no trailing path)
-  api.use('/:name', async (c, next) => {
-    const name = c.req.param('name');
-    const registry = getRegistry(c);
-
-    if (allowedQueues && !allowedQueues.includes(name)) {
-      return c.json({ error: `Queue "${name}" is not exposed via API` }, 403);
-    }
-    if (!registry.has(name)) {
-      return c.json({ error: `Queue "${name}" is not configured` }, 404);
-    }
-    await next();
-  });
+  api.use('/:name/*', guardQueue);
+  api.use('/:name', guardQueue);
 
   // Zod validation hook: return 400 with flat error on failure
-  const onValidationError = (result: any, c: any) => {
+  const onValidationError = (result: { success: boolean; error?: { issues: Array<{ path: (string | number)[]; message: string }> } }, c: Context) => {
     if (!result.success) {
-      const issues = result.error.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`);
+      const issues = result.error!.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
       return c.json({ error: 'Validation failed', details: issues }, 400);
     }
   };
@@ -99,18 +93,31 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   }
 
   // GET /:name/jobs - List jobs
-  api.get('/:name/jobs', async (c) => {
-    const name = c.req.param('name');
-    const registry = getRegistry(c);
-    const { queue } = registry.get(name);
+  if (schemas && zv) {
+    api.get('/:name/jobs', zv('query', schemas.getJobsQuerySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
 
-    const type = (c.req.query('type') ?? 'waiting') as 'waiting' | 'active' | 'delayed' | 'completed' | 'failed';
-    const start = parseInt(c.req.query('start') ?? '0', 10);
-    const end = parseInt(c.req.query('end') ?? '-1', 10);
+      const { type, start, end } = c.req.valid('query' as never) as { type: string; start: number; end: number };
 
-    const jobs = await queue.getJobs(type, start, end);
-    return c.json(serializeJobs(jobs));
-  });
+      const jobs = await queue.getJobs(type as any, start, end);
+      return c.json(serializeJobs(jobs));
+    });
+  } else {
+    api.get('/:name/jobs', async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const type = (c.req.query('type') ?? 'waiting') as 'waiting' | 'active' | 'delayed' | 'completed' | 'failed';
+      const start = parseInt(c.req.query('start') ?? '0', 10);
+      const end = parseInt(c.req.query('end') ?? '-1', 10);
+
+      const jobs = await queue.getJobs(type, start, end);
+      return c.json(serializeJobs(jobs));
+    });
+  }
 
   // GET /:name/jobs/:id - Get a single job
   api.get('/:name/jobs/:id', async (c) => {
@@ -167,36 +174,62 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   });
 
   // POST /:name/retry - Retry failed jobs
-  api.post('/:name/retry', async (c) => {
-    const name = c.req.param('name');
-    const registry = getRegistry(c);
-    const { queue } = registry.get(name);
+  if (schemas && zv) {
+    api.post('/:name/retry', zv('json', schemas.retryBodySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
 
-    let count: number | undefined;
-    try {
-      const body = await c.req.json<{ count?: number }>();
-      count = body.count;
-    } catch {
-      // No body or invalid JSON - retry all
-    }
+      const { count } = c.req.valid('json' as never) as { count?: number };
 
-    const retried = await queue.retryJobs(count != null ? { count } : undefined);
-    return c.json({ retried });
-  });
+      const retried = await queue.retryJobs(count != null ? { count } : undefined);
+      return c.json({ retried });
+    });
+  } else {
+    api.post('/:name/retry', async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      let count: number | undefined;
+      try {
+        const body = await c.req.json<{ count?: number }>();
+        count = body.count;
+      } catch {
+        // No body or invalid JSON - retry all
+      }
+
+      const retried = await queue.retryJobs(count != null ? { count } : undefined);
+      return c.json({ retried });
+    });
+  }
 
   // DELETE /:name/clean - Clean old jobs
-  api.delete('/:name/clean', async (c) => {
-    const name = c.req.param('name');
-    const registry = getRegistry(c);
-    const { queue } = registry.get(name);
+  if (schemas && zv) {
+    api.delete('/:name/clean', zv('query', schemas.cleanQuerySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
 
-    const grace = parseInt(c.req.query('grace') ?? '0', 10);
-    const limit = parseInt(c.req.query('limit') ?? '100', 10);
-    const type = (c.req.query('type') ?? 'completed') as 'completed' | 'failed';
+      const { grace, limit, type } = c.req.valid('query' as never) as { grace: number; limit: number; type: string };
 
-    const removed = await queue.clean(grace, limit, type);
-    return c.json({ removed: removed.length });
-  });
+      const removed = await queue.clean(grace, limit, type as any);
+      return c.json({ removed: removed.length });
+    });
+  } else {
+    api.delete('/:name/clean', async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const grace = parseInt(c.req.query('grace') ?? '0', 10);
+      const limit = parseInt(c.req.query('limit') ?? '100', 10);
+      const type = (c.req.query('type') ?? 'completed') as 'completed' | 'failed';
+
+      const removed = await queue.clean(grace, limit, type);
+      return c.json({ removed: removed.length });
+    });
+  }
 
   // GET /:name/workers - List workers
   api.get('/:name/workers', async (c) => {

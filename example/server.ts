@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
-import { glideMQ, glideMQApi } from '@glidemq/hono';
+import { glideMQ, glideMQApi, QueueRegistryImpl } from '@glidemq/hono';
 import type { GlideMQEnv } from '@glidemq/hono';
 import type { Job } from 'glide-mq';
 
@@ -44,17 +44,18 @@ const app = new Hono<GlideMQEnv>();
 // CORS for browser clients
 app.use(cors());
 
+// Create registry at top level for graceful shutdown access
+const registry = new QueueRegistryImpl({
+  connection,
+  queues: {
+    emails: { processor: processEmail, concurrency: 5 },
+    reports: { processor: processReport, concurrency: 1 },
+    notifications: { processor: processNotification, concurrency: 10 },
+  },
+});
+
 // Mount glide-mq middleware
-app.use(
-  glideMQ({
-    connection,
-    queues: {
-      emails: { processor: processEmail, concurrency: 5 },
-      reports: { processor: processReport, concurrency: 1 },
-      notifications: { processor: processNotification, concurrency: 10 },
-    },
-  }),
-);
+app.use(glideMQ(registry));
 
 // Mount the REST API
 app.route('/api/queues', glideMQApi());
@@ -105,10 +106,9 @@ console.log();
 const server = serve({ fetch: app.fetch, port: PORT });
 
 // Graceful shutdown
-function shutdown() {
+async function shutdown() {
   console.log('\nShutting down...');
-  // Get registry from the middleware closure - access it via a dummy request
-  // For a real app, keep a reference to the registry
+  await registry.closeAll();
   server.close();
   process.exit(0);
 }

@@ -74,9 +74,11 @@ function createLiveSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name: st
   return streamSSE(c, async (stream) => {
     const eventTypes = ['completed', 'failed', 'progress', 'stalled', 'active', 'waiting'];
     const listeners: Array<{ event: string; handler: (...args: any[]) => void }> = [];
+    let running = true;
 
     for (const eventType of eventTypes) {
       const handler = (args: any) => {
+        if (!running) return;
         stream
           .writeSSE({
             event: eventType,
@@ -90,20 +92,23 @@ function createLiveSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name: st
     }
 
     stream.onAbort(() => {
+      running = false;
+    });
+
+    try {
+      while (running) {
+        await stream.writeSSE({
+          event: 'heartbeat',
+          data: JSON.stringify({ time: Date.now() }),
+          id: String(eventId++),
+        });
+        await stream.sleep(15_000);
+      }
+    } finally {
       for (const { event, handler } of listeners) {
         queueEvents.removeListener(event, handler);
       }
       releaseQueueEvents(name);
-    });
-
-    // Keep stream alive with heartbeat
-    while (true) {
-      await stream.writeSSE({
-        event: 'heartbeat',
-        data: JSON.stringify({ time: Date.now() }),
-        id: String(eventId++),
-      });
-      await stream.sleep(15_000);
     }
   });
 }

@@ -49,8 +49,6 @@ export interface QueueRegistry {
 // --- API Config ---
 
 export interface GlideMQApiConfig {
-  /** Route prefix for API endpoints. Default: '' */
-  prefix?: string;
   /** Restrict API to specific queue names. Default: all configured queues. */
   queues?: string[];
 }

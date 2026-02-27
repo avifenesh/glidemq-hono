@@ -216,6 +216,28 @@ describe('glideMQApi', () => {
     });
   });
 
+  describe('GET /:name/jobs (Zod validation)', () => {
+    it('returns 400 for invalid type param', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/jobs?type=bogus');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Validation failed');
+      expect(body.details).toBeDefined();
+    });
+  });
+
+  describe('DELETE /:name/clean (Zod validation)', () => {
+    it('returns 400 for invalid type param', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/clean?type=bogus', { method: 'DELETE' });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Validation failed');
+      expect(body.details).toBeDefined();
+    });
+  });
+
   describe('GET /:name/jobs (query params)', () => {
     it('defaults to waiting when no type param', async () => {
       const { app } = setup();
@@ -343,5 +365,20 @@ describe('glideMQApi without middleware', () => {
 
     const res = await app.request('/emails/jobs');
     expect(res.status).toBe(500);
+  });
+});
+
+describe('glideMQApi error handler', () => {
+  it('returns generic 500 without leaking internal details', async () => {
+    const app = new Hono();
+    app.route('/', glideMQApi());
+
+    // Trigger error by calling without middleware (no registry set)
+    const res = await app.request('/emails/counts');
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe('Internal server error');
+    expect(body.error).not.toContain('middleware');
+    expect(body.error).not.toContain('glideMQ');
   });
 });
