@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import type { GlideMQEnv } from '../src/types';
 import { glideMQ } from '../src/middleware';
@@ -45,5 +45,28 @@ describe('glideMQ middleware', () => {
     await app.request('/second');
 
     expect(firstRef).toBe(secondRef);
+  });
+
+  it('exposes getConnection and getPrefix', async () => {
+    const app = new Hono<GlideMQEnv>();
+    app.use(glideMQ({ queues: { test: {} }, testing: true, prefix: 'myprefix' }));
+
+    app.get('/meta', (c) => {
+      const registry = c.var.glideMQ;
+      return c.json({
+        connection: registry.getConnection() ?? null,
+        prefix: registry.getPrefix() ?? null,
+      });
+    });
+
+    const res = await app.request('/meta');
+    const body = await res.json();
+
+    expect(body.connection).toBeNull();
+    expect(body.prefix).toBe('myprefix');
+  });
+
+  it('throws if no connection and not testing', () => {
+    expect(() => glideMQ({ queues: { test: {} } })).toThrow('connection is required');
   });
 });

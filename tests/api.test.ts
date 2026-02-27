@@ -1,5 +1,23 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { Hono } from 'hono';
+import type { GlideMQEnv } from '../src/types';
+import { QueueRegistryImpl } from '../src/registry';
+import { glideMQApi } from '../src/api';
 import { buildTestApp } from './helpers/test-app';
+
+function buildRestrictedApp(allowedQueues: string[]) {
+  const registry = new QueueRegistryImpl({
+    queues: { emails: {}, reports: {}, secret: {} },
+    testing: true,
+  });
+  const app = new Hono<GlideMQEnv>();
+  app.use(async (c, next) => {
+    c.set('glideMQ', registry);
+    await next();
+  });
+  app.route('/', glideMQApi({ queues: allowedQueues }));
+  return { app, registry };
+}
 
 describe('glideMQApi', () => {
   let cleanup: (() => Promise<void>) | null = null;
@@ -193,5 +211,134 @@ describe('glideMQApi', () => {
       const workers = await res.json();
       expect(Array.isArray(workers)).toBe(true);
     });
+  });
+
+  describe('GET /:name/jobs (query params)', () => {
+    it('defaults to waiting when no type param', async () => {
+      const { app } = setup();
+      await app.request('/emails/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'test', data: {} }),
+      });
+
+      const res = await app.request('/emails/jobs');
+      expect(res.status).toBe(200);
+      const jobs = await res.json();
+      expect(Array.isArray(jobs)).toBe(true);
+    });
+
+    it('returns empty array for type with no jobs', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/jobs?type=failed');
+      expect(res.status).toBe(200);
+      const jobs = await res.json();
+      expect(jobs).toEqual([]);
+    });
+  });
+
+  describe('POST /:name/retry (edge cases)', () => {
+    it('handles retry with no body at all', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/retry', { method: 'POST' });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toHaveProperty('retried');
+    });
+  });
+
+  describe('DELETE /:name/clean (variations)', () => {
+    it('cleans with type=failed', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/clean?type=failed', { method: 'DELETE' });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(typeof body.removed).toBe('number');
+    });
+
+    it('defaults all params when none provided', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/clean', { method: 'DELETE' });
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('POST /:name/jobs (defaults)', () => {
+    it('defaults data to empty object when omitted', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'minimal' }),
+      });
+      expect(res.status).toBe(201);
+      const job = await res.json();
+      expect(job.name).toBe('minimal');
+    });
+  });
+});
+
+describe('glideMQApi with restricted queues', () => {
+  let cleanup: (() => Promise<void>) | null = null;
+
+  afterEach(async () => {
+    if (cleanup) {
+      await cleanup();
+      cleanup = null;
+    }
+  });
+
+  it('allows access to whitelisted queues', async () => {
+    const { app, registry } = buildRestrictedApp(['emails']);
+    cleanup = () => registry.closeAll();
+
+    const res = await app.request('/emails/counts');
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 403 for non-whitelisted queue', async () => {
+    const { app, registry } = buildRestrictedApp(['emails']);
+    cleanup = () => registry.closeAll();
+
+    const res = await app.request('/secret/counts');
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('not exposed');
+  });
+
+  it('returns 403 for non-whitelisted queue job POST', async () => {
+    const { app, registry } = buildRestrictedApp(['emails']);
+    cleanup = () => registry.closeAll();
+
+    const res = await app.request('/secret/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'test', data: {} }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('allows multiple whitelisted queues', async () => {
+    const { app, registry } = buildRestrictedApp(['emails', 'reports']);
+    cleanup = () => registry.closeAll();
+
+    const res1 = await app.request('/emails/counts');
+    expect(res1.status).toBe(200);
+
+    const res2 = await app.request('/reports/counts');
+    expect(res2.status).toBe(200);
+
+    const res3 = await app.request('/secret/counts');
+    expect(res3.status).toBe(403);
+  });
+});
+
+describe('glideMQApi without middleware', () => {
+  it('throws when registry is not set', async () => {
+    const app = new Hono();
+    app.route('/', glideMQApi());
+
+    const res = await app.request('/emails/jobs');
+    expect(res.status).toBe(500);
   });
 });

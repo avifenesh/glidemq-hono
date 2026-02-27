@@ -14,7 +14,7 @@ describe('SSE events (testing mode)', () => {
   it('returns SSE content-type', async () => {
     const { app, registry } = buildTestApp({
       emails: {
-        processor: async (job: any) => ({ sent: true }),
+        processor: async (_job: any) => ({ sent: true }),
       },
     });
     cleanup = () => registry.closeAll();

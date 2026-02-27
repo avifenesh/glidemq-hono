@@ -9,9 +9,7 @@ describe('QueueRegistryImpl', () => {
   });
 
   it('throws if no connection and not testing', () => {
-    expect(() => new QueueRegistryImpl({ queues: { q: {} } })).toThrow(
-      'connection is required',
-    );
+    expect(() => new QueueRegistryImpl({ queues: { q: {} } })).toThrow('connection is required');
   });
 
   it('creates registry in testing mode without connection', () => {
@@ -51,7 +49,7 @@ describe('QueueRegistryImpl', () => {
     registry = new QueueRegistryImpl({
       queues: {
         emails: {
-          processor: async (job) => ({ sent: true }),
+          processor: async (_job) => ({ sent: true }),
         },
       },
       testing: true,

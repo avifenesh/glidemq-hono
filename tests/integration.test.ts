@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Hono } from 'hono';
 import { Queue } from 'glide-mq';
 import type { GlideMQEnv } from '../src/types';
-import { glideMQ } from '../src/middleware';
 import { glideMQApi } from '../src/api';
 import { QueueRegistryImpl } from '../src/registry';
 
