@@ -1,0 +1,70 @@
+{
+  "name": "@glidemq/hono",
+  "version": "0.1.0",
+  "description": "Hono middleware for glide-mq - queue management REST API and SSE events",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "hono",
+    "middleware",
+    "message-queue",
+    "glide-mq",
+    "valkey",
+    "redis",
+    "job-queue",
+    "sse",
+    "rest-api"
+  ],
+  "author": "Avi Fenesh",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/avifenesh/glidemq-hono.git"
+  },
+  "peerDependencies": {
+    "glide-mq": ">=0.8.0",
+    "hono": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@hono/zod-validator": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@hono/zod-validator": "^0.4.3",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "glide-mq": "^0.8.0",
+    "hono": "^4.7.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "zod": "^3.24.0"
+  }
+}
