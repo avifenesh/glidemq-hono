@@ -1,0 +1,22 @@
+# Source
+src/
+tests/
+example/
+
+# Config
+tsconfig.json
+vitest.config.ts
+eslint.config.mjs
+.prettierrc
+.prettierignore
+drift-detect-report.md
+
+# CI/Dev
+.github/
+.claude/
+.gitignore
+coverage/
+*.tsbuildinfo
+
+# Maps (keep .d.ts.map for go-to-definition)
+*.js.map
