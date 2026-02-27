@@ -58,7 +58,7 @@ describe('glideMQApi', () => {
       expect(job.id).toBeDefined();
     });
 
-    it('returns 400 if name is missing (no zod)', async () => {
+    it('returns 400 with error details if name is missing', async () => {
       const { app } = setup();
       const res = await app.request('/emails/jobs', {
         method: 'POST',
@@ -66,8 +66,11 @@ describe('glideMQApi', () => {
         body: JSON.stringify({ data: { to: 'user@test.com' } }),
       });
 
-      // Without zod, manual validation catches it
       expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Validation failed');
+      expect(body.details).toBeDefined();
+      expect(Array.isArray(body.details)).toBe(true);
     });
 
     it('returns 404 for unconfigured queue', async () => {

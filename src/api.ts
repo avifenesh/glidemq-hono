@@ -57,9 +57,17 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     await next();
   });
 
+  // Zod validation hook: return 400 with flat error on failure
+  const onValidationError = (result: any, c: any) => {
+    if (!result.success) {
+      const issues = result.error.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`);
+      return c.json({ error: 'Validation failed', details: issues }, 400);
+    }
+  };
+
   // POST /:name/jobs - Add a job
   if (schemas && zv) {
-    api.post('/:name/jobs', zv('json', schemas.addJobSchema), async (c) => {
+    api.post('/:name/jobs', zv('json', schemas.addJobSchema, onValidationError), async (c) => {
       const name = c.req.param('name');
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
