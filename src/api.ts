@@ -88,7 +88,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const body = await c.req.json<{ name: string; data?: unknown; opts?: Record<string, unknown> }>();
 
       if (!body.name || typeof body.name !== 'string') {
-        return c.json({ error: 'name is required and must be a string' }, 400);
+        return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
       }
 
       const job = await queue.add(body.name, body.data ?? {}, (body.opts ?? {}) as any);
@@ -117,7 +117,17 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
-      const type = (c.req.query('type') ?? 'waiting') as 'waiting' | 'active' | 'delayed' | 'completed' | 'failed';
+      const VALID_JOB_TYPES = ['waiting', 'active', 'delayed', 'completed', 'failed'] as const;
+      const typeParam = c.req.query('type') ?? 'waiting';
+
+      if (!VALID_JOB_TYPES.includes(typeParam as any)) {
+        return c.json(
+          { error: 'Validation failed', details: [`type: must be one of ${VALID_JOB_TYPES.join(', ')}`] },
+          400,
+        );
+      }
+
+      const type = typeParam as (typeof VALID_JOB_TYPES)[number];
       const start = parseInt(c.req.query('start') ?? '0', 10);
       const end = parseInt(c.req.query('end') ?? '-1', 10);
 
@@ -237,9 +247,19 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
+      const VALID_CLEAN_TYPES = ['completed', 'failed'] as const;
+      const typeParam = c.req.query('type') ?? 'completed';
+
+      if (!VALID_CLEAN_TYPES.includes(typeParam as any)) {
+        return c.json(
+          { error: 'Validation failed', details: [`type: must be one of ${VALID_CLEAN_TYPES.join(', ')}`] },
+          400,
+        );
+      }
+
+      const type = typeParam as (typeof VALID_CLEAN_TYPES)[number];
       const grace = parseInt(c.req.query('grace') ?? '0', 10);
       const limit = parseInt(c.req.query('limit') ?? '100', 10);
-      const type = (c.req.query('type') ?? 'completed') as 'completed' | 'failed';
 
       if (isNaN(grace) || isNaN(limit)) {
         return c.json({ error: 'grace and limit must be numbers' }, 400);
