@@ -56,7 +56,10 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   api.use('/:name', guardQueue);
 
   // Zod validation hook: return 400 with flat error on failure
-  const onValidationError = (result: { success: boolean; error?: { issues: Array<{ path: (string | number)[]; message: string }> } }, c: Context) => {
+  const onValidationError = (
+    result: { success: boolean; error?: { issues: Array<{ path: (string | number)[]; message: string }> } },
+    c: Context,
+  ) => {
     if (!result.success) {
       const issues = result.error!.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
       return c.json({ error: 'Validation failed', details: issues }, 400);
