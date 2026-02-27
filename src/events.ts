@@ -13,7 +13,7 @@ const subscriptions = new Map<string, EventSubscription>();
  * Get or create a shared QueueEvents instance for a given queue name.
  * Uses ref counting so multiple SSE clients share a single listener.
  */
-function acquireQueueEvents(registry: QueueRegistry, name: string, connectionOpts: any, prefix?: string): any {
+function acquireQueueEvents(name: string, connectionOpts: any, prefix?: string): any {
   const existing = subscriptions.get(name);
   if (existing) {
     existing.refCount++;
@@ -68,7 +68,7 @@ function createLiveSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name: st
     return c.json({ error: 'Connection config required for SSE events' }, 500);
   }
 
-  const queueEvents = acquireQueueEvents(registry, name, connection, prefix);
+  const queueEvents = acquireQueueEvents(name, connection, prefix);
   let eventId = 0;
 
   return streamSSE(c, async (stream) => {
@@ -97,11 +97,15 @@ function createLiveSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name: st
 
     try {
       while (running) {
-        await stream.writeSSE({
-          event: 'heartbeat',
-          data: JSON.stringify({ time: Date.now() }),
-          id: String(eventId++),
-        });
+        try {
+          await stream.writeSSE({
+            event: 'heartbeat',
+            data: JSON.stringify({ time: Date.now() }),
+            id: String(eventId++),
+          });
+        } catch {
+          break;
+        }
         await stream.sleep(15_000);
       }
     } finally {
@@ -128,6 +132,7 @@ function createTestingSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name:
     while (running) {
       try {
         const counts = await queue.getJobCounts();
+        if (!running) break;
         // Emit change events by diffing counts
         for (const [state, count] of Object.entries(counts) as [string, number][]) {
           const prev = (lastCounts as any)[state] ?? 0;

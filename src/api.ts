@@ -34,16 +34,23 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json({ error: 'Internal server error' }, 500);
   });
 
-  // Guard: ensure queue exists and is allowed
+  // Guard: ensure queue name is valid, exists, and is allowed
+  const VALID_QUEUE_NAME = /^[a-zA-Z0-9_-]{1,128}$/;
+
   const guardQueue = async (c: Context<GlideMQEnv>, next: () => Promise<void>) => {
     const name = c.req.param('name');
+
+    if (!VALID_QUEUE_NAME.test(name)) {
+      return c.json({ error: 'Invalid queue name' }, 400);
+    }
+
     const registry = getRegistry(c);
 
     if (allowedQueues && !allowedQueues.includes(name)) {
-      return c.json({ error: `Queue "${name}" is not exposed via API` }, 403);
+      return c.json({ error: 'Queue not found or not accessible' }, 403);
     }
     if (!registry.has(name)) {
-      return c.json({ error: `Queue "${name}" is not configured` }, 404);
+      return c.json({ error: 'Queue not found or not accessible' }, 404);
     }
     await next();
   };
@@ -113,6 +120,10 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const type = (c.req.query('type') ?? 'waiting') as 'waiting' | 'active' | 'delayed' | 'completed' | 'failed';
       const start = parseInt(c.req.query('start') ?? '0', 10);
       const end = parseInt(c.req.query('end') ?? '-1', 10);
+
+      if (isNaN(start) || isNaN(end)) {
+        return c.json({ error: 'start and end must be numbers' }, 400);
+      }
 
       const jobs = await queue.getJobs(type, start, end);
       return c.json(serializeJobs(jobs));
@@ -225,6 +236,10 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const grace = parseInt(c.req.query('grace') ?? '0', 10);
       const limit = parseInt(c.req.query('limit') ?? '100', 10);
       const type = (c.req.query('type') ?? 'completed') as 'completed' | 'failed';
+
+      if (isNaN(grace) || isNaN(limit)) {
+        return c.json({ error: 'grace and limit must be numbers' }, 400);
+      }
 
       const removed = await queue.clean(grace, limit, type);
       return c.json({ removed: removed.length });

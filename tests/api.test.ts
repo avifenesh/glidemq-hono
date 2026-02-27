@@ -328,7 +328,7 @@ describe('glideMQApi with restricted queues', () => {
     const res = await app.request('/secret/counts');
     expect(res.status).toBe(403);
     const body = await res.json();
-    expect(body.error).toContain('not exposed');
+    expect(body.error).toContain('not accessible');
   });
 
   it('returns 403 for non-whitelisted queue job POST', async () => {
