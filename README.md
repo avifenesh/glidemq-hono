@@ -96,6 +96,28 @@ curl -X POST http://localhost:3000/api/queues/emails/jobs \
   -d '{"name": "welcome", "data": {"to": "user@example.com"}, "opts": {"priority": 10}}'
 ```
 
+### Retrying Failed Jobs
+
+```bash
+# Retry up to 50 failed jobs
+curl -X POST http://localhost:3000/api/queues/emails/retry \
+  -H 'Content-Type: application/json' \
+  -d '{"count": 50}'
+
+# Retry all failed jobs (omit body or send empty object)
+curl -X POST http://localhost:3000/api/queues/emails/retry
+```
+
+### Cleaning Old Jobs
+
+```bash
+# Remove completed jobs older than 1 hour, up to 200
+curl -X DELETE 'http://localhost:3000/api/queues/emails/clean?grace=3600000&limit=200&type=completed'
+
+# Remove all failed jobs (defaults: grace=0, limit=100, type=completed)
+curl -X DELETE 'http://localhost:3000/api/queues/emails/clean?type=failed'
+```
+
 ### SSE Events
 
 The events endpoint streams real-time updates. Available event types: `completed`, `failed`, `progress`, `active`, `waiting`, `stalled`, and `heartbeat`.
@@ -182,6 +204,8 @@ expect(res.status).toBe(201);
 // Cleanup
 await registry.closeAll();
 ```
+
+> **Note:** SSE in testing mode emits `counts` events (polling-based state diffs) rather than job lifecycle events (`completed`, `failed`, etc.).
 
 ## Direct Registry Access
 
