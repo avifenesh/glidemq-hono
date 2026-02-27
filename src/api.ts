@@ -46,10 +46,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
     const registry = getRegistry(c);
 
-    if (allowedQueues && !allowedQueues.includes(name)) {
-      return c.json({ error: 'Queue not found or not accessible' }, 403);
-    }
-    if (!registry.has(name)) {
+    if ((allowedQueues && !allowedQueues.includes(name)) || !registry.has(name)) {
       return c.json({ error: 'Queue not found or not accessible' }, 404);
     }
     await next();
@@ -208,6 +205,10 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
         count = body.count;
       } catch {
         // No body or invalid JSON - retry all
+      }
+
+      if (count !== undefined && (!Number.isInteger(count) || count < 1)) {
+        return c.json({ error: 'count must be a positive integer' }, 400);
       }
 
       const retried = await queue.retryJobs(count != null ? { count } : undefined);

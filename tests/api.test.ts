@@ -321,17 +321,17 @@ describe('glideMQApi with restricted queues', () => {
     expect(res.status).toBe(200);
   });
 
-  it('returns 403 for non-whitelisted queue', async () => {
+  it('returns 404 for non-whitelisted queue', async () => {
     const { app, registry } = buildRestrictedApp(['emails']);
     cleanup = () => registry.closeAll();
 
     const res = await app.request('/secret/counts');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toContain('not accessible');
   });
 
-  it('returns 403 for non-whitelisted queue job POST', async () => {
+  it('returns 404 for non-whitelisted queue job POST', async () => {
     const { app, registry } = buildRestrictedApp(['emails']);
     cleanup = () => registry.closeAll();
 
@@ -340,7 +340,7 @@ describe('glideMQApi with restricted queues', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'test', data: {} }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('allows multiple whitelisted queues', async () => {
@@ -354,7 +354,7 @@ describe('glideMQApi with restricted queues', () => {
     expect(res2.status).toBe(200);
 
     const res3 = await app.request('/secret/counts');
-    expect(res3.status).toBe(403);
+    expect(res3.status).toBe(404);
   });
 });
 
