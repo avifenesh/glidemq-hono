@@ -98,6 +98,8 @@ curl -X POST http://localhost:3000/api/queues/emails/jobs \
 
 ### SSE Events
 
+The events endpoint streams real-time updates. Available event types: `completed`, `failed`, `progress`, `active`, `waiting`, `stalled`, and `heartbeat`.
+
 ```ts
 const eventSource = new EventSource('/api/queues/emails/events');
 
@@ -107,6 +109,10 @@ eventSource.addEventListener('completed', (e) => {
 
 eventSource.addEventListener('failed', (e) => {
   console.log('Job failed:', JSON.parse(e.data));
+});
+
+eventSource.addEventListener('progress', (e) => {
+  console.log('Job progress:', JSON.parse(e.data));
 });
 ```
 
@@ -121,6 +127,35 @@ const client = hc<GlideMQApiType>('http://localhost:3000/api/queues');
 const res = await client.emails.jobs.$post({
   json: { name: 'welcome', data: { to: 'user@example.com' } },
 });
+```
+
+### Exported Types
+
+```ts
+import type {
+  GlideMQConfig,       // Middleware configuration
+  GlideMQEnv,          // Hono env type for c.var.glideMQ
+  GlideMQApiConfig,    // API sub-router options
+  QueueConfig,         // Per-queue config (processor, concurrency)
+  QueueRegistry,       // Registry interface (for custom implementations)
+  ManagedQueue,        // { queue, worker } pair returned by registry.get()
+  JobResponse,         // Serialized job shape returned by API
+  JobCountsResponse,   // { waiting, active, delayed, completed, failed }
+  WorkerInfoResponse,  // Worker metadata
+  GlideMQApiType,      // Hono RPC type for hc<GlideMQApiType>()
+} from '@glidemq/hono';
+```
+
+### Utilities
+
+For advanced use cases (custom routes, custom API sub-routers):
+
+```ts
+import { serializeJob, serializeJobs, createEventsRoute } from '@glidemq/hono';
+
+// serializeJob(job) - Convert a glide-mq Job to a plain JSON-safe object
+// serializeJobs(jobs) - Serialize an array of jobs
+// createEventsRoute() - SSE event handler factory for custom routers
 ```
 
 ## Testing

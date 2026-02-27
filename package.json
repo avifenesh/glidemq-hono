@@ -38,6 +38,9 @@
     "sse",
     "rest-api"
   ],
+  "engines": {
+    "node": ">=20"
+  },
   "author": "Avi Fenesh",
   "license": "Apache-2.0",
   "repository": {
