@@ -7,9 +7,7 @@ import { glideMQApi } from '../../src/api';
  * Create a test Hono app with glideMQ middleware in testing mode.
  * No Valkey required.
  */
-export function buildTestApp(
-  queues: Record<string, QueueConfig> = { default: {} },
-) {
+export function buildTestApp(queues: Record<string, QueueConfig> = { default: {} }) {
   const registry = new QueueRegistryImpl({ queues, testing: true });
   const app = new Hono<GlideMQEnv>();
 

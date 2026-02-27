@@ -40,6 +40,10 @@ export interface QueueRegistry {
   closeAll(): Promise<void>;
   /** Whether testing mode is active */
   readonly testing: boolean;
+  /** Get the connection options (undefined in testing mode) */
+  getConnection(): ConnectionOptions | undefined;
+  /** Get the key prefix */
+  getPrefix(): string | undefined;
 }
 
 // --- API Config ---

@@ -13,12 +13,7 @@ const subscriptions = new Map<string, EventSubscription>();
  * Get or create a shared QueueEvents instance for a given queue name.
  * Uses ref counting so multiple SSE clients share a single listener.
  */
-function acquireQueueEvents(
-  registry: QueueRegistry,
-  name: string,
-  connectionOpts: any,
-  prefix?: string,
-): any {
+function acquireQueueEvents(registry: QueueRegistry, name: string, connectionOpts: any, prefix?: string): any {
   const existing = subscriptions.get(name);
   if (existing) {
     existing.refCount++;
@@ -66,13 +61,8 @@ export function createEventsRoute() {
 }
 
 function createLiveSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name: string) {
-  // We need the connection config from the registry's config.
-  // Since QueueRegistryImpl stores it internally, we'll access it indirectly
-  // by reading from the managed queue's internals or requiring the user
-  // to pass connection info. For now, we access it through the registry.
-  const registryImpl = registry as any;
-  const connection = registryImpl.config?.connection;
-  const prefix = registryImpl.config?.prefix;
+  const connection = registry.getConnection();
+  const prefix = registry.getPrefix();
 
   if (!connection) {
     return c.json({ error: 'Connection config required for SSE events' }, 500);

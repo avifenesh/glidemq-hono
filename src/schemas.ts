@@ -18,10 +18,6 @@ export function hasZod(): boolean {
   return z !== null && zValidator !== null;
 }
 
-export function getZod() {
-  return z;
-}
-
 export function getZValidator() {
   return zValidator;
 }
@@ -44,9 +40,7 @@ export function buildSchemas() {
         removeOnComplete: z
           .union([z.boolean(), z.number(), z.object({ age: z.number(), count: z.number() })])
           .optional(),
-        removeOnFail: z
-          .union([z.boolean(), z.number(), z.object({ age: z.number(), count: z.number() })])
-          .optional(),
+        removeOnFail: z.union([z.boolean(), z.number(), z.object({ age: z.number(), count: z.number() })]).optional(),
       })
       .optional()
       .default({}),

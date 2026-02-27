@@ -89,6 +89,14 @@ export class QueueRegistryImpl implements QueueRegistry {
     return { queue, worker };
   }
 
+  getConnection(): ConnectionOptions | undefined {
+    return this.config.connection;
+  }
+
+  getPrefix(): string | undefined {
+    return this.config.prefix;
+  }
+
   async closeAll(): Promise<void> {
     if (this.closed) return;
     this.closed = true;

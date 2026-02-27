@@ -96,12 +96,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
-    const type = (c.req.query('type') ?? 'waiting') as
-      | 'waiting'
-      | 'active'
-      | 'delayed'
-      | 'completed'
-      | 'failed';
+    const type = (c.req.query('type') ?? 'waiting') as 'waiting' | 'active' | 'delayed' | 'completed' | 'failed';
     const start = parseInt(c.req.query('start') ?? '0', 10);
     const end = parseInt(c.req.query('end') ?? '-1', 10);
 
