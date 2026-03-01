@@ -1,6 +1,20 @@
 # @glidemq/hono
 
-Hono middleware for [glide-mq](https://github.com/avifenesh/glide-mq) - queue management REST API and real-time SSE events.
+[![npm](https://img.shields.io/npm/v/@glidemq/hono)](https://www.npmjs.com/package/@glidemq/hono)
+[![CI](https://github.com/avifenesh/glidemq-hono/actions/workflows/ci.yml/badge.svg)](https://github.com/avifenesh/glidemq-hono/actions)
+[![license](https://img.shields.io/npm/l/@glidemq/hono)](https://github.com/avifenesh/glidemq-hono/blob/main/LICENSE)
+
+Hono middleware for [glide-mq](https://github.com/avifenesh/glide-mq) - mount a full queue management REST API and real-time SSE event stream in one line.
+
+Declare your queues in config, mount the middleware, and get 11 REST endpoints + live SSE - no boilerplate. Works with Hono's typed RPC client out of the box.
+
+Part of the **glide-mq** ecosystem:
+
+| Package | Purpose |
+|---------|---------|
+| [glide-mq](https://github.com/avifenesh/glide-mq) | Core queue library - producers, workers, schedulers, workflows |
+| **@glidemq/hono** | Hono REST API + SSE middleware (you are here) |
+| [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard) | Express web UI for monitoring and managing queues |
 
 ## Install
 
