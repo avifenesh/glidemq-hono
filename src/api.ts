@@ -268,8 +268,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const grace = parseInt(c.req.query('grace') ?? '0', 10);
       const limit = parseInt(c.req.query('limit') ?? '100', 10);
 
-      if (isNaN(grace) || isNaN(limit)) {
-        return c.json({ error: 'Validation failed', details: ['grace and limit must be numbers'] }, 400);
+      if (isNaN(grace) || isNaN(limit) || grace < 0 || limit < 1) {
+        return c.json({ error: 'Validation failed', details: ['grace must be >= 0 and limit must be >= 1'] }, 400);
       }
 
       const removed = await queue.clean(grace, limit, type);
