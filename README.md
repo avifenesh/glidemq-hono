@@ -15,6 +15,7 @@ Part of the **glide-mq** ecosystem:
 | [glide-mq](https://github.com/avifenesh/glide-mq) | Core queue library - producers, workers, schedulers, workflows |
 | **@glidemq/hono** | Hono REST API + SSE middleware (you are here) |
 | [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard) | Express web UI for monitoring and managing queues |
+| [examples](https://github.com/avifenesh/glidemq-examples) | Framework integrations and use-case examples |
 
 ## Install
 
