@@ -30,7 +30,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   const api = new Hono<GlideMQEnv>();
 
-  api.onError((_err, c) => {
+  api.onError((err, c) => {
+    console.error('[glidemq]', err);
     return c.json({ error: 'Internal server error' }, 500);
   });
 
@@ -91,7 +92,13 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
         return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
       }
 
-      const job = await queue.add(body.name, body.data ?? {}, (body.opts ?? {}) as any);
+      const ALLOWED_OPTS = ['delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail'];
+      const rawOpts = body.opts ?? {};
+      const safeOpts: Record<string, unknown> = {};
+      for (const key of ALLOWED_OPTS) {
+        if (key in rawOpts) safeOpts[key] = rawOpts[key];
+      }
+      const job = await queue.add(body.name, body.data ?? {}, safeOpts as any);
       if (!job) {
         return c.json({ error: 'Job deduplicated' }, 409);
       }
@@ -132,7 +139,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const end = parseInt(c.req.query('end') ?? '-1', 10);
 
       if (isNaN(start) || isNaN(end)) {
-        return c.json({ error: 'start and end must be numbers' }, 400);
+        return c.json({ error: 'Validation failed', details: ['start and end must be numbers'] }, 400);
       }
 
       const jobs = await queue.getJobs(type, start, end);
@@ -221,7 +228,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       }
 
       if (count !== undefined && (!Number.isInteger(count) || count < 1)) {
-        return c.json({ error: 'count must be a positive integer' }, 400);
+        return c.json({ error: 'Validation failed', details: ['count must be a positive integer'] }, 400);
       }
 
       const retried = await queue.retryJobs(count != null ? { count } : undefined);
@@ -262,7 +269,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const limit = parseInt(c.req.query('limit') ?? '100', 10);
 
       if (isNaN(grace) || isNaN(limit)) {
-        return c.json({ error: 'grace and limit must be numbers' }, 400);
+        return c.json({ error: 'Validation failed', details: ['grace and limit must be numbers'] }, 400);
       }
 
       const removed = await queue.clean(grace, limit, type);

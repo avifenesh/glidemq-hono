@@ -53,13 +53,13 @@ export function buildSchemas() {
   });
 
   const cleanQuerySchema = z.object({
-    grace: z.coerce.number().default(0),
-    limit: z.coerce.number().default(100),
+    grace: z.coerce.number().int().min(0).default(0),
+    limit: z.coerce.number().int().min(1).default(100),
     type: z.enum(['completed', 'failed']).default('completed'),
   });
 
   const retryBodySchema = z.object({
-    count: z.coerce.number().optional(),
+    count: z.coerce.number().int().min(1).optional(),
   });
 
   return {

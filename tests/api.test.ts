@@ -301,6 +301,72 @@ describe('glideMQApi', () => {
       expect(job.name).toBe('minimal');
     });
   });
+
+  describe('POST /:name/jobs (opts allowlist)', () => {
+    it('accepts allowed opts keys', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'test', data: {}, opts: { delay: 1000, priority: 5 } }),
+      });
+      expect(res.status).toBe(201);
+    });
+  });
+
+  describe('Queue name validation', () => {
+    it('returns 400 for invalid queue name with special chars', async () => {
+      const { app } = setup();
+      const res = await app.request('/queue!@%23/counts');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Invalid queue name');
+    });
+
+    it('returns 400 for queue name with spaces', async () => {
+      const { app } = setup();
+      const res = await app.request('/queue%20name/counts');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /:name/retry (Zod validation)', () => {
+    it('rejects count of 0', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 0 }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Validation failed');
+    });
+
+    it('rejects negative count', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: -5 }),
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('DELETE /:name/clean (Zod bounds)', () => {
+    it('rejects negative grace', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/clean?grace=-1', { method: 'DELETE' });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects zero limit', async () => {
+      const { app } = setup();
+      const res = await app.request('/emails/clean?limit=0', { method: 'DELETE' });
+      expect(res.status).toBe(400);
+    });
+  });
 });
 
 describe('glideMQApi with restricted queues', () => {

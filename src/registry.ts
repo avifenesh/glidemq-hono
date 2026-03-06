@@ -18,7 +18,7 @@ export class QueueRegistryImpl implements QueueRegistry {
   }
 
   has(name: string): boolean {
-    return name in this.config.queues;
+    return Object.hasOwn(this.config.queues, name);
   }
 
   names(): string[] {

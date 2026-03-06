@@ -34,6 +34,16 @@ describe('QueueRegistryImpl', () => {
     expect(registry.has('unknown')).toBe(false);
   });
 
+  it('has() does not match prototype properties', () => {
+    registry = new QueueRegistryImpl({
+      queues: { emails: {} },
+      testing: true,
+    });
+    expect(registry.has('constructor')).toBe(false);
+    expect(registry.has('toString')).toBe(false);
+    expect(registry.has('hasOwnProperty')).toBe(false);
+  });
+
   it('get() creates a TestQueue lazily', () => {
     registry = new QueueRegistryImpl({
       queues: { emails: {} },

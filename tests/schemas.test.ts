@@ -130,5 +130,52 @@ describe('schemas', () => {
         expect(result.data.count).toBe(10);
       }
     });
+
+    it('rejects count of 0', () => {
+      const result = schemas.retryBodySchema.safeParse({ count: 0 });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects negative count', () => {
+      const result = schemas.retryBodySchema.safeParse({ count: -5 });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects non-integer count', () => {
+      const result = schemas.retryBodySchema.safeParse({ count: 3.7 });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('cleanQuerySchema (bounds)', () => {
+    const schemas = buildSchemas()!;
+
+    it('rejects negative grace', () => {
+      const result = schemas.cleanQuerySchema.safeParse({ grace: '-1' });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects zero limit', () => {
+      const result = schemas.cleanQuerySchema.safeParse({ limit: '0' });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects negative limit', () => {
+      const result = schemas.cleanQuerySchema.safeParse({ limit: '-1' });
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts limit of 1', () => {
+      const result = schemas.cleanQuerySchema.safeParse({ limit: '1' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.limit).toBe(1);
+      }
+    });
+
+    it('rejects non-integer grace', () => {
+      const result = schemas.cleanQuerySchema.safeParse({ grace: '1.5' });
+      expect(result.success).toBe(false);
+    });
   });
 });
