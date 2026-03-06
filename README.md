@@ -14,6 +14,7 @@ Part of the **glide-mq** ecosystem:
 |---------|---------|
 | [glide-mq](https://github.com/avifenesh/glide-mq) | Core queue library - producers, workers, schedulers, workflows |
 | **@glidemq/hono** | Hono REST API + SSE middleware (you are here) |
+| [@glidemq/fastify](https://github.com/avifenesh/glidemq-fastify) | Fastify plugin - REST API + SSE events |
 | [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard) | Express web UI for monitoring and managing queues |
 | [@glidemq/nestjs](https://github.com/avifenesh/glidemq-nestjs) | NestJS module - decorators, DI, lifecycle management |
 | [examples](https://github.com/avifenesh/glidemq-examples) | Framework integrations and use-case examples |
