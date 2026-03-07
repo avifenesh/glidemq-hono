@@ -93,8 +93,20 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       }
 
       const ALLOWED_OPTS = [
-        'delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail',
-        'jobId', 'lifo', 'deduplication', 'ordering', 'cost', 'backoff', 'parent', 'ttl',
+        'delay',
+        'priority',
+        'attempts',
+        'timeout',
+        'removeOnComplete',
+        'removeOnFail',
+        'jobId',
+        'lifo',
+        'deduplication',
+        'ordering',
+        'cost',
+        'backoff',
+        'parent',
+        'ttl',
       ];
       const rawOpts = body.opts ?? {};
       const safeOpts: Record<string, unknown> = {};
@@ -459,20 +471,24 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // PUT /:name/schedulers/:schedulerName - Upsert a scheduler
   if (schemas && zv) {
-    api.put('/:name/schedulers/:schedulerName', zv('json', schemas.upsertSchedulerBodySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
-      const schedulerName = c.req.param('schedulerName');
-      const registry = getRegistry(c);
-      const { queue } = registry.get(name);
+    api.put(
+      '/:name/schedulers/:schedulerName',
+      zv('json', schemas.upsertSchedulerBodySchema, onValidationError),
+      async (c) => {
+        const name = c.req.param('name');
+        const schedulerName = c.req.param('schedulerName');
+        const registry = getRegistry(c);
+        const { queue } = registry.get(name);
 
-      const { schedule, template } = c.req.valid('json' as never) as {
-        schedule: Record<string, unknown>;
-        template?: Record<string, unknown>;
-      };
+        const { schedule, template } = c.req.valid('json' as never) as {
+          schedule: Record<string, unknown>;
+          template?: Record<string, unknown>;
+        };
 
-      const result = await (queue as any).upsertJobScheduler(schedulerName, schedule, template);
-      return c.json(result, 200);
-    });
+        const result = await (queue as any).upsertJobScheduler(schedulerName, schedule, template);
+        return c.json(result, 200);
+      },
+    );
   } else {
     api.put('/:name/schedulers/:schedulerName', async (c) => {
       const name = c.req.param('name');
