@@ -94,6 +94,11 @@ export interface JobResponse {
   timestamp: number;
   finishedOn: number | undefined;
   processedOn: number | undefined;
+  parentId?: string;
+  parentQueue?: string;
+  orderingKey?: string;
+  cost?: number;
+  schedulerName?: string;
 }
 
 export interface JobCountsResponse {

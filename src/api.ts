@@ -134,7 +134,22 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
         return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
       }
 
-      const ALLOWED_OPTS = ['delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail'];
+      const ALLOWED_OPTS = [
+        'delay',
+        'priority',
+        'attempts',
+        'timeout',
+        'removeOnComplete',
+        'removeOnFail',
+        'jobId',
+        'lifo',
+        'deduplication',
+        'ordering',
+        'cost',
+        'backoff',
+        'parent',
+        'ttl',
+      ];
       const rawOpts = body.opts ?? {};
       const safeOpts: Record<string, unknown> = {};
       for (const key of ALLOWED_OPTS) {
@@ -155,9 +170,14 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
-      const { type, start, end } = c.req.valid('query' as never) as { type: string; start: number; end: number };
+      const { type, start, end, excludeData } = c.req.valid('query' as never) as {
+        type: string;
+        start: number;
+        end: number;
+        excludeData?: boolean;
+      };
 
-      const jobs = await queue.getJobs(type as any, start, end);
+      const jobs = await (queue as any).getJobs(type, start, end, excludeData ? { excludeData: true } : undefined);
       return c.json(serializeJobs(jobs));
     });
   } else {
@@ -184,7 +204,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
         return c.json({ error: 'Validation failed', details: ['start and end must be numbers'] }, 400);
       }
 
-      const jobs = await queue.getJobs(type, start, end);
+      const excludeData = c.req.query('excludeData') === 'true';
+      const jobs = await (queue as any).getJobs(type, start, end, excludeData ? { excludeData: true } : undefined);
       return c.json(serializeJobs(jobs));
     });
   }
@@ -331,6 +352,260 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // GET /:name/events - SSE stream
   api.get('/:name/events', createEventsRoute());
+
+  // GET /:name/metrics - Get time-series metrics
+  if (schemas && zv) {
+    api.get('/:name/metrics', zv('query', schemas.metricsQuerySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const { type, start, end } = c.req.valid('query' as never) as { type: string; start: number; end: number };
+
+      const metrics = await (queue as any).getMetrics(type, { start, end });
+      return c.json(metrics);
+    });
+  } else {
+    api.get('/:name/metrics', async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const VALID_METRIC_TYPES = ['completed', 'failed'] as const;
+      const typeParam = c.req.query('type');
+
+      if (!typeParam || !VALID_METRIC_TYPES.includes(typeParam as any)) {
+        return c.json(
+          { error: 'Validation failed', details: [`type: required, must be one of ${VALID_METRIC_TYPES.join(', ')}`] },
+          400,
+        );
+      }
+
+      const start = parseInt(c.req.query('start') ?? '0', 10);
+      const end = parseInt(c.req.query('end') ?? '-1', 10);
+
+      if (isNaN(start) || isNaN(end)) {
+        return c.json({ error: 'Validation failed', details: ['start and end must be numbers'] }, 400);
+      }
+
+      const metrics = await (queue as any).getMetrics(typeParam, { start, end });
+      return c.json(metrics);
+    });
+  }
+
+  // POST /:name/jobs/:id/priority - Change job priority
+  if (schemas && zv) {
+    api.post('/:name/jobs/:id/priority', zv('json', schemas.changePriorityBodySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const jobId = c.req.param('id');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const job = await queue.getJob(jobId);
+      if (!job) {
+        return c.json({ error: 'Job not found' }, 404);
+      }
+
+      const { priority } = c.req.valid('json' as never) as { priority: number };
+      await (job as any).changePriority(priority);
+      return c.body(null, 204);
+    });
+  } else {
+    api.post('/:name/jobs/:id/priority', async (c) => {
+      const name = c.req.param('name');
+      const jobId = c.req.param('id');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const job = await queue.getJob(jobId);
+      if (!job) {
+        return c.json({ error: 'Job not found' }, 404);
+      }
+
+      const body = await c.req.json<{ priority?: number }>();
+      if (body.priority == null || !Number.isInteger(body.priority) || body.priority < 0) {
+        return c.json({ error: 'Validation failed', details: ['priority must be a non-negative integer'] }, 400);
+      }
+
+      await (job as any).changePriority(body.priority);
+      return c.body(null, 204);
+    });
+  }
+
+  // POST /:name/jobs/:id/delay - Change job delay
+  if (schemas && zv) {
+    api.post('/:name/jobs/:id/delay', zv('json', schemas.changeDelayBodySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const jobId = c.req.param('id');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const job = await queue.getJob(jobId);
+      if (!job) {
+        return c.json({ error: 'Job not found' }, 404);
+      }
+
+      const { delay } = c.req.valid('json' as never) as { delay: number };
+      await (job as any).changeDelay(delay);
+      return c.body(null, 204);
+    });
+  } else {
+    api.post('/:name/jobs/:id/delay', async (c) => {
+      const name = c.req.param('name');
+      const jobId = c.req.param('id');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const job = await queue.getJob(jobId);
+      if (!job) {
+        return c.json({ error: 'Job not found' }, 404);
+      }
+
+      const body = await c.req.json<{ delay?: number }>();
+      if (body.delay == null || !Number.isInteger(body.delay) || body.delay < 0) {
+        return c.json({ error: 'Validation failed', details: ['delay must be a non-negative integer'] }, 400);
+      }
+
+      await (job as any).changeDelay(body.delay);
+      return c.body(null, 204);
+    });
+  }
+
+  // POST /:name/jobs/:id/promote - Promote a delayed job
+  api.post('/:name/jobs/:id/promote', async (c) => {
+    const name = c.req.param('name');
+    const jobId = c.req.param('id');
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      return c.json({ error: 'Job not found' }, 404);
+    }
+
+    await (job as any).promote();
+    return c.body(null, 204);
+  });
+
+  // GET /:name/schedulers - List all schedulers
+  api.get('/:name/schedulers', async (c) => {
+    const name = c.req.param('name');
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    const schedulers = await (queue as any).getRepeatableJobs();
+    return c.json(schedulers);
+  });
+
+  // GET /:name/schedulers/:schedulerName - Get a single scheduler
+  api.get('/:name/schedulers/:schedulerName', async (c) => {
+    const name = c.req.param('name');
+    const schedulerName = c.req.param('schedulerName');
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    const scheduler = await (queue as any).getJobScheduler(schedulerName);
+    if (!scheduler) {
+      return c.json({ error: 'Scheduler not found' }, 404);
+    }
+    return c.json(scheduler);
+  });
+
+  // PUT /:name/schedulers/:schedulerName - Upsert a scheduler
+  if (schemas && zv) {
+    api.put(
+      '/:name/schedulers/:schedulerName',
+      zv('json', schemas.upsertSchedulerBodySchema, onValidationError),
+      async (c) => {
+        const name = c.req.param('name');
+        const schedulerName = c.req.param('schedulerName');
+        const registry = getRegistry(c);
+        const { queue } = registry.get(name);
+
+        const { schedule, template } = c.req.valid('json' as never) as {
+          schedule: Record<string, unknown>;
+          template?: Record<string, unknown>;
+        };
+
+        const result = await (queue as any).upsertJobScheduler(schedulerName, schedule, template);
+        return c.json(result, 200);
+      },
+    );
+  } else {
+    api.put('/:name/schedulers/:schedulerName', async (c) => {
+      const name = c.req.param('name');
+      const schedulerName = c.req.param('schedulerName');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const body = await c.req.json<{ schedule?: Record<string, unknown>; template?: Record<string, unknown> }>();
+
+      if (!body.schedule || typeof body.schedule !== 'object') {
+        return c.json({ error: 'Validation failed', details: ['schedule: Required'] }, 400);
+      }
+
+      const result = await (queue as any).upsertJobScheduler(schedulerName, body.schedule, body.template);
+      return c.json(result, 200);
+    });
+  }
+
+  // DELETE /:name/schedulers/:schedulerName - Remove a scheduler
+  api.delete('/:name/schedulers/:schedulerName', async (c) => {
+    const name = c.req.param('name');
+    const schedulerName = c.req.param('schedulerName');
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    await (queue as any).removeJobScheduler(schedulerName);
+    return c.body(null, 204);
+  });
+
+  // POST /:name/jobs/wait - Add a job and wait for result
+  if (schemas && zv) {
+    api.post('/:name/jobs/wait', zv('json', schemas.addAndWaitBodySchema, onValidationError), async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const body = c.req.valid('json' as never) as {
+        name: string;
+        data: unknown;
+        opts: Record<string, unknown>;
+        waitTimeout?: number;
+      };
+
+      const { waitTimeout, ...rest } = body;
+      const result = await (queue as any).addAndWait(rest.name, rest.data, {
+        ...rest.opts,
+        ...(waitTimeout != null ? { timeout: waitTimeout } : {}),
+      });
+      return c.json(result);
+    });
+  } else {
+    api.post('/:name/jobs/wait', async (c) => {
+      const name = c.req.param('name');
+      const registry = getRegistry(c);
+      const { queue } = registry.get(name);
+
+      const body = await c.req.json<{
+        name: string;
+        data?: unknown;
+        opts?: Record<string, unknown>;
+        waitTimeout?: number;
+      }>();
+
+      if (!body.name || typeof body.name !== 'string') {
+        return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
+      }
+
+      const opts = body.opts ?? {};
+      const result = await (queue as any).addAndWait(body.name, body.data ?? {}, {
+        ...opts,
+        ...(body.waitTimeout != null ? { timeout: body.waitTimeout } : {}),
+      });
+      return c.json(result);
+    });
+  }
 
   return api;
 }

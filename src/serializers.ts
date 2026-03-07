@@ -5,7 +5,7 @@ import type { JobResponse } from './types';
  * Convert a glide-mq Job instance to a plain JSON-safe object.
  */
 export function serializeJob(job: Job): JobResponse {
-  return {
+  const result: JobResponse = {
     id: job.id,
     name: job.name,
     data: job.data,
@@ -18,6 +18,15 @@ export function serializeJob(job: Job): JobResponse {
     finishedOn: job.finishedOn,
     processedOn: job.processedOn,
   };
+
+  const jobAny = job as any;
+  if (jobAny.parentId != null) result.parentId = jobAny.parentId;
+  if (jobAny.parentQueue != null) result.parentQueue = jobAny.parentQueue;
+  if (jobAny.orderingKey != null) result.orderingKey = jobAny.orderingKey;
+  if (jobAny.cost != null) result.cost = jobAny.cost;
+  if (jobAny.schedulerName != null) result.schedulerName = jobAny.schedulerName;
+
+  return result;
 }
 
 /**
