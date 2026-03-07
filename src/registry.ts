@@ -1,9 +1,10 @@
-import type { Queue, Worker, ConnectionOptions } from 'glide-mq';
-import type { GlideMQConfig, QueueConfig, QueueRegistry, ManagedQueue } from './types';
+import type { Queue, Worker, Producer, ConnectionOptions } from 'glide-mq';
+import type { GlideMQConfig, QueueConfig, ProducerConfig, QueueRegistry, ManagedQueue } from './types';
 
 export class QueueRegistryImpl implements QueueRegistry {
   private readonly config: GlideMQConfig;
   private readonly managed = new Map<string, ManagedQueue>();
+  private readonly producers = new Map<string, Producer>();
   private closed = false;
 
   constructor(config: GlideMQConfig) {
@@ -18,11 +19,11 @@ export class QueueRegistryImpl implements QueueRegistry {
   }
 
   has(name: string): boolean {
-    return Object.hasOwn(this.config.queues, name);
+    return Object.hasOwn(this.config.queues ?? {}, name);
   }
 
   names(): string[] {
-    return Object.keys(this.config.queues);
+    return Object.keys(this.config.queues ?? {});
   }
 
   get<D = any, R = any>(name: string): ManagedQueue<D, R> {
@@ -33,7 +34,7 @@ export class QueueRegistryImpl implements QueueRegistry {
     const existing = this.managed.get(name);
     if (existing) return existing as ManagedQueue<D, R>;
 
-    const queueConfig = this.config.queues[name];
+    const queueConfig = (this.config.queues ?? {})[name];
     if (!queueConfig) {
       throw new Error(`GlideMQ: queue "${name}" is not configured`);
     }
@@ -44,6 +45,49 @@ export class QueueRegistryImpl implements QueueRegistry {
 
     this.managed.set(name, entry as ManagedQueue);
     return entry;
+  }
+
+  hasProducer(name: string): boolean {
+    return Object.hasOwn(this.config.producers ?? {}, name);
+  }
+
+  producerNames(): string[] {
+    return Object.keys(this.config.producers ?? {});
+  }
+
+  getProducer<D = any>(name: string): Producer<D> {
+    if (this.closed) {
+      throw new Error(`GlideMQ: registry is closed`);
+    }
+
+    const existing = this.producers.get(name);
+    if (existing) return existing as Producer<D>;
+
+    const producerConfig = (this.config.producers ?? {})[name];
+    if (!producerConfig) {
+      throw new Error(`GlideMQ: producer "${name}" is not configured`);
+    }
+
+    if (this.config.testing) {
+      throw new Error(`GlideMQ: producers are not supported in testing mode. Use queues instead.`);
+    }
+
+    const producer = this.createProducerEntry<D>(name, producerConfig);
+    this.producers.set(name, producer as Producer);
+    return producer;
+  }
+
+  private createProducerEntry<D>(name: string, config: ProducerConfig): Producer<D> {
+    const { Producer: ProducerClass } = require('glide-mq') as {
+      Producer: new (name: string, opts: any) => Producer<D>;
+    };
+
+    return new ProducerClass(name, {
+      connection: this.config.connection!,
+      prefix: this.config.prefix,
+      compression: config.compression,
+      serializer: config.serializer ?? this.config.serializer,
+    });
   }
 
   private createEntry<D, R>(name: string, config: QueueConfig<D, R>): ManagedQueue<D, R> {
@@ -106,7 +150,11 @@ export class QueueRegistryImpl implements QueueRegistry {
       if (worker) closeOps.push(worker.close());
       closeOps.push(queue.close());
     }
+    for (const producer of this.producers.values()) {
+      closeOps.push(producer.close());
+    }
     await Promise.allSettled(closeOps);
     this.managed.clear();
+    this.producers.clear();
   }
 }

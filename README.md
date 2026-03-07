@@ -67,15 +67,22 @@ Middleware factory. Creates a `QueueRegistry` and injects it into `c.var.glideMQ
 ```ts
 interface GlideMQConfig {
   connection?: ConnectionOptions; // Required unless testing: true
-  queues: Record<string, QueueConfig>;
+  queues?: Record<string, QueueConfig>;
+  producers?: Record<string, ProducerConfig>; // Lightweight serverless producers
   prefix?: string;                // Key prefix (default: 'glide')
   testing?: boolean;              // Use TestQueue/TestWorker (no Valkey)
+  serializer?: Serializer;        // Custom serializer (default: JSON)
 }
 
 interface QueueConfig {
   processor?: (job: Job) => Promise<any>; // Omit for producer-only
   concurrency?: number;                   // Default: 1
   workerOpts?: Record<string, unknown>;
+}
+
+interface ProducerConfig {
+  compression?: 'none' | 'gzip'; // Default: 'none'
+  serializer?: Serializer;       // Overrides config-level serializer
 }
 ```
 
@@ -85,7 +92,8 @@ Pre-built REST API sub-router. Mount it on any path.
 
 ```ts
 interface GlideMQApiConfig {
-  queues?: string[];    // Restrict to specific queues
+  queues?: string[];     // Restrict to specific queues
+  producers?: string[];  // Restrict to specific producers
 }
 ```
 
@@ -93,7 +101,8 @@ interface GlideMQApiConfig {
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| POST | `/:name/jobs` | Add a job |
+| POST | `/:name/jobs` | Add a job (via Queue) |
+| POST | `/:name/produce` | Add a job (via Producer - serverless/edge) |
 | GET | `/:name/jobs` | List jobs (query: `type`, `start`, `end`) |
 | GET | `/:name/jobs/:id` | Get a single job |
 | GET | `/:name/counts` | Get job counts by state |
@@ -176,13 +185,18 @@ import type {
   GlideMQEnv,          // Hono env type for c.var.glideMQ
   GlideMQApiConfig,    // API sub-router options
   QueueConfig,         // Per-queue config (processor, concurrency)
+  ProducerConfig,      // Per-producer config (compression, serializer)
   QueueRegistry,       // Registry interface (for custom implementations)
   ManagedQueue,        // { queue, worker } pair returned by registry.get()
   JobResponse,         // Serialized job shape returned by API
   JobCountsResponse,   // { waiting, active, delayed, completed, failed }
   WorkerInfoResponse,  // Worker metadata
   GlideMQApiType,      // Hono RPC type for hc<GlideMQApiType>()
+  ProducerOptions,     // glide-mq Producer constructor options
 } from '@glidemq/hono';
+
+// Re-exported from glide-mq for convenience:
+import { Producer, ServerlessPool, serverlessPool } from '@glidemq/hono';
 ```
 
 ### Utilities
@@ -195,6 +209,91 @@ import { serializeJob, serializeJobs, createEventsRoute } from '@glidemq/hono';
 // serializeJob(job) - Convert a glide-mq Job to a plain JSON-safe object
 // serializeJobs(jobs) - Serialize an array of jobs
 // createEventsRoute() - SSE event handler factory for custom routers
+```
+
+## Serverless / Edge
+
+For serverless and edge environments (Cloudflare Workers, Deno Deploy, Vercel Edge Functions), use **producers** instead of full queues. Producers are lightweight -- they only support `add()` and `addBulk()`, with no workers, no event emitters, and no state tracking. They return plain string IDs instead of Job objects.
+
+### Configuration
+
+```ts
+import { Hono } from 'hono';
+import { glideMQ, glideMQApi } from '@glidemq/hono';
+
+const app = new Hono();
+
+app.use(glideMQ({
+  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
+  producers: {
+    emails: { compression: 'gzip' },
+    notifications: {},
+  },
+}));
+
+app.route('/api/queues', glideMQApi());
+
+export default app;
+```
+
+You can mix queues and producers in the same config -- use queues for services that process jobs and producers for services that only enqueue:
+
+```ts
+app.use(glideMQ({
+  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
+  queues: {
+    reports: { processor: processReport, concurrency: 3 },
+  },
+  producers: {
+    emails: {},
+    notifications: { compression: 'gzip' },
+  },
+}));
+```
+
+### The `POST /:name/produce` endpoint
+
+The produce endpoint accepts the same body as `POST /:name/jobs` but uses a `Producer` under the hood. It returns a plain `{ id }` response instead of a full serialized job.
+
+```bash
+curl -X POST http://localhost:3000/api/queues/emails/produce \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "welcome", "data": {"to": "user@example.com"}, "opts": {"priority": 10}}'
+# => {"id": "42"}
+```
+
+### When to use producers vs queues
+
+| Use case | Use |
+|----------|-----|
+| Serverless functions (Lambda, Edge Workers) that enqueue jobs | `producers` |
+| Long-running services that process jobs | `queues` with `processor` |
+| Services that only enqueue, even on traditional servers | Either works; `producers` use fewer resources |
+| Need `getJobs()`, `getJobCounts()`, pause/resume, SSE events | `queues` |
+
+### Direct registry access
+
+```ts
+app.post('/enqueue', async (c) => {
+  const registry = c.var.glideMQ;
+  const producer = registry.getProducer('emails');
+
+  const jobId = await producer.add('welcome', { to: 'user@example.com' });
+  return c.json({ id: jobId });
+});
+```
+
+You can also import `Producer` directly from `@glidemq/hono` for standalone usage:
+
+```ts
+import { Producer } from '@glidemq/hono';
+
+const producer = new Producer('emails', {
+  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
+});
+
+const id = await producer.add('send', { to: 'user@example.com' });
+await producer.close();
 ```
 
 ## Testing

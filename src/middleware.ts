@@ -24,12 +24,11 @@ import { QueueRegistryImpl } from './registry';
 export function glideMQ(config: GlideMQConfig): MiddlewareHandler<GlideMQEnv>;
 export function glideMQ(registry: QueueRegistry): MiddlewareHandler<GlideMQEnv>;
 export function glideMQ(configOrRegistry: GlideMQConfig | QueueRegistry): MiddlewareHandler<GlideMQEnv> {
-  // Discriminate by checking for `queues` - a required GlideMQConfig property
-  // that does not exist on QueueRegistry. This avoids brittle duck-typing.
+  // Discriminate: QueueRegistry has a `closeAll` method; GlideMQConfig does not.
   const registry: QueueRegistry =
-    'queues' in configOrRegistry
-      ? new QueueRegistryImpl(configOrRegistry as GlideMQConfig)
-      : (configOrRegistry as QueueRegistry);
+    typeof (configOrRegistry as QueueRegistry).closeAll === 'function'
+      ? (configOrRegistry as QueueRegistry)
+      : new QueueRegistryImpl(configOrRegistry as GlideMQConfig);
 
   return createMiddleware<GlideMQEnv>(async (c, next) => {
     c.set('glideMQ', registry);

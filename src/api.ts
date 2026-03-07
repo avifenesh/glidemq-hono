@@ -25,6 +25,7 @@ function getRegistry(c: { var: { glideMQ: QueueRegistry } }): QueueRegistry {
  */
 export function glideMQApi(opts?: GlideMQApiConfig) {
   const allowedQueues = opts?.queues;
+  const allowedProducers = opts?.producers;
   const schemas = hasZod() ? buildSchemas() : null;
   const zv = getZValidator();
 
@@ -52,6 +53,47 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     }
     await next();
   };
+
+  // Guard for /:name/produce - checks producer config instead of queue config
+  const guardProducer = async (c: Context<GlideMQEnv>, next: () => Promise<void>) => {
+    const name = c.req.param('name');
+
+    if (!VALID_QUEUE_NAME.test(name)) {
+      return c.json({ error: 'Invalid queue name' }, 400);
+    }
+
+    const registry = getRegistry(c);
+
+    if ((allowedProducers && !allowedProducers.includes(name)) || !registry.hasProducer(name)) {
+      return c.json({ error: 'Producer not found or not accessible' }, 404);
+    }
+    await next();
+  };
+
+  // Mount produce endpoint BEFORE the queue guard so it uses its own guard
+  api.post('/:name/produce', guardProducer, async (c) => {
+    const name = c.req.param('name');
+    const registry = getRegistry(c);
+    const producer = registry.getProducer(name);
+    const body = await c.req.json<{ name: string; data?: unknown; opts?: Record<string, unknown> }>();
+
+    if (!body.name || typeof body.name !== 'string') {
+      return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
+    }
+
+    const ALLOWED_OPTS = ['delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail'];
+    const rawOpts = body.opts ?? {};
+    const safeOpts: Record<string, unknown> = {};
+    for (const key of ALLOWED_OPTS) {
+      if (key in rawOpts) safeOpts[key] = rawOpts[key];
+    }
+
+    const jobId = await producer.add(body.name, body.data ?? {}, safeOpts as any);
+    if (!jobId) {
+      return c.json({ error: 'Job deduplicated' }, 409);
+    }
+    return c.json({ id: jobId }, 201);
+  });
 
   api.use('/:name/*', guardQueue);
   api.use('/:name', guardQueue);
