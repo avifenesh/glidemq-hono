@@ -52,10 +52,14 @@ export class QueueRegistryImpl implements QueueRegistry {
       Worker: new (name: string, processor: any, opts: any) => Worker<D, R>;
     };
 
-    const queueOpts = {
+    const queueOpts: Record<string, unknown> = {
       connection: this.config.connection!,
       prefix: this.config.prefix,
     };
+
+    if (this.config.serializer) {
+      queueOpts.serializer = this.config.serializer;
+    }
 
     const queue = new QueueClass(name, queueOpts);
     let worker: Worker<D, R> | null = null;

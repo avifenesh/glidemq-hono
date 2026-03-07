@@ -6,7 +6,7 @@
 
 Hono middleware for [glide-mq](https://github.com/avifenesh/glide-mq) - mount a full queue management REST API and real-time SSE event stream in one line.
 
-Declare your queues in config, mount the middleware, and get 11 REST endpoints + live SSE - no boilerplate. Works with Hono's typed RPC client out of the box.
+Declare your queues in config, mount the middleware, and get 20 REST endpoints + live SSE - no boilerplate. Works with Hono's typed RPC client out of the box.
 
 Part of the **glide-mq** ecosystem:
 
@@ -70,6 +70,7 @@ interface GlideMQConfig {
   queues: Record<string, QueueConfig>;
   prefix?: string;                // Key prefix (default: 'glide')
   testing?: boolean;              // Use TestQueue/TestWorker (no Valkey)
+  serializer?: Record<string, unknown>; // Custom serializer options
 }
 
 interface QueueConfig {
@@ -94,9 +95,14 @@ interface GlideMQApiConfig {
 | Method | Route | Description |
 |--------|-------|-------------|
 | POST | `/:name/jobs` | Add a job |
-| GET | `/:name/jobs` | List jobs (query: `type`, `start`, `end`) |
+| POST | `/:name/jobs/wait` | Add a job and wait for its result |
+| GET | `/:name/jobs` | List jobs (query: `type`, `start`, `end`, `excludeData`) |
 | GET | `/:name/jobs/:id` | Get a single job |
+| POST | `/:name/jobs/:id/priority` | Change job priority |
+| POST | `/:name/jobs/:id/delay` | Change job delay |
+| POST | `/:name/jobs/:id/promote` | Promote a delayed job to waiting |
 | GET | `/:name/counts` | Get job counts by state |
+| GET | `/:name/metrics` | Get time-series metrics (query: `type`, `start`, `end`) |
 | POST | `/:name/pause` | Pause queue |
 | POST | `/:name/resume` | Resume queue |
 | POST | `/:name/drain` | Drain waiting jobs |
@@ -104,6 +110,10 @@ interface GlideMQApiConfig {
 | DELETE | `/:name/clean` | Clean old jobs (query: `grace`, `limit`, `type`) |
 | GET | `/:name/workers` | List active workers |
 | GET | `/:name/events` | SSE event stream |
+| GET | `/:name/schedulers` | List all job schedulers |
+| GET | `/:name/schedulers/:schedulerName` | Get a single scheduler |
+| PUT | `/:name/schedulers/:schedulerName` | Upsert a job scheduler |
+| DELETE | `/:name/schedulers/:schedulerName` | Remove a job scheduler |
 
 ### Adding Jobs
 
@@ -111,6 +121,41 @@ interface GlideMQApiConfig {
 curl -X POST http://localhost:3000/api/queues/emails/jobs \
   -H 'Content-Type: application/json' \
   -d '{"name": "welcome", "data": {"to": "user@example.com"}, "opts": {"priority": 10}}'
+```
+
+The `opts` object supports: `delay`, `priority`, `attempts`, `timeout`, `removeOnComplete`, `removeOnFail`, `jobId`, `lifo`, `deduplication`, `ordering`, `cost`, `backoff`, `parent`, and `ttl`.
+
+#### Add and Wait
+
+```bash
+# Add a job and block until it completes, returning the result
+curl -X POST http://localhost:3000/api/queues/emails/jobs/wait \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "welcome", "data": {"to": "user@example.com"}, "waitTimeout": 30000}'
+```
+
+#### LIFO Mode
+
+```bash
+curl -X POST http://localhost:3000/api/queues/emails/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "urgent", "data": {}, "opts": {"lifo": true}}'
+```
+
+#### Deduplication
+
+```bash
+curl -X POST http://localhost:3000/api/queues/emails/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "sync", "data": {}, "opts": {"deduplication": {"id": "sync-user-123", "ttl": 60000, "mode": "throttle"}}}'
+```
+
+#### Parent-Child Relationships
+
+```bash
+curl -X POST http://localhost:3000/api/queues/reports/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "generate", "data": {}, "opts": {"parent": {"queue": "emails", "id": "42"}}}'
 ```
 
 ### Retrying Failed Jobs
@@ -133,6 +178,56 @@ curl -X DELETE 'http://localhost:3000/api/queues/emails/clean?grace=3600000&limi
 
 # Remove all failed jobs (defaults: grace=0, limit=100, type=completed)
 curl -X DELETE 'http://localhost:3000/api/queues/emails/clean?type=failed'
+```
+
+### Job Mutations
+
+```bash
+# Change job priority
+curl -X POST http://localhost:3000/api/queues/emails/jobs/42/priority \
+  -H 'Content-Type: application/json' \
+  -d '{"priority": 1}'
+
+# Change job delay
+curl -X POST http://localhost:3000/api/queues/emails/jobs/42/delay \
+  -H 'Content-Type: application/json' \
+  -d '{"delay": 60000}'
+
+# Promote a delayed job to waiting
+curl -X POST http://localhost:3000/api/queues/emails/jobs/42/promote
+```
+
+### Metrics
+
+```bash
+# Get completed job metrics
+curl 'http://localhost:3000/api/queues/emails/metrics?type=completed&start=0&end=-1'
+
+# Get failed job metrics
+curl 'http://localhost:3000/api/queues/emails/metrics?type=failed'
+```
+
+### Job Schedulers
+
+```bash
+# List all schedulers
+curl http://localhost:3000/api/queues/emails/schedulers
+
+# Get a specific scheduler
+curl http://localhost:3000/api/queues/emails/schedulers/daily-report
+
+# Upsert a scheduler (cron pattern)
+curl -X PUT http://localhost:3000/api/queues/emails/schedulers/daily-report \
+  -H 'Content-Type: application/json' \
+  -d '{"schedule": {"pattern": "0 9 * * *", "tz": "America/New_York"}, "template": {"name": "report", "data": {"type": "daily"}}}'
+
+# Upsert a scheduler (interval)
+curl -X PUT http://localhost:3000/api/queues/emails/schedulers/health-check \
+  -H 'Content-Type: application/json' \
+  -d '{"schedule": {"every": 30000}}'
+
+# Remove a scheduler
+curl -X DELETE http://localhost:3000/api/queues/emails/schedulers/daily-report
 ```
 
 ### SSE Events
