@@ -20,6 +20,8 @@ export interface GlideMQConfig {
   prefix?: string;
   /** Enable in-memory testing mode (no Valkey needed) */
   testing?: boolean;
+  /** Custom serializer options passed through to glide-mq Queue constructor */
+  serializer?: Record<string, unknown>;
 }
 
 // --- Registry ---
@@ -75,6 +77,11 @@ export interface JobResponse {
   timestamp: number;
   finishedOn: number | undefined;
   processedOn: number | undefined;
+  parentId?: string;
+  parentQueue?: string;
+  orderingKey?: string;
+  cost?: number;
+  schedulerName?: string;
 }
 
 export interface JobCountsResponse {
