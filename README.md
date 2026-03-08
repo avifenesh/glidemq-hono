@@ -1,23 +1,17 @@
 # @glidemq/hono
 
 [![npm](https://img.shields.io/npm/v/@glidemq/hono)](https://www.npmjs.com/package/@glidemq/hono)
-[![CI](https://github.com/avifenesh/glidemq-hono/actions/workflows/ci.yml/badge.svg)](https://github.com/avifenesh/glidemq-hono/actions)
 [![license](https://img.shields.io/npm/l/@glidemq/hono)](https://github.com/avifenesh/glidemq-hono/blob/main/LICENSE)
 
-Hono middleware for [glide-mq](https://github.com/avifenesh/glide-mq) - mount a full queue management REST API and real-time SSE event stream in one line.
+REST API and real-time SSE for [glide-mq](https://github.com/avifenesh/glide-mq) job queues, as Hono middleware. One middleware + one router -- declare queues, get 21 endpoints with type-safe RPC.
 
-Declare your queues in config, mount the middleware, and get 20 REST endpoints + live SSE - no boilerplate. Works with Hono's typed RPC client out of the box.
+## Why @glidemq/hono
 
-Part of the **glide-mq** ecosystem:
-
-| Package | Purpose |
-|---------|---------|
-| [glide-mq](https://github.com/avifenesh/glide-mq) | Core queue library - producers, workers, schedulers, workflows |
-| **@glidemq/hono** | Hono REST API + SSE middleware (you are here) |
-| [@glidemq/fastify](https://github.com/avifenesh/glidemq-fastify) | Fastify plugin - REST API + SSE events |
-| [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard) | Express web UI for monitoring and managing queues |
-| [@glidemq/nestjs](https://github.com/avifenesh/glidemq-nestjs) | NestJS module - decorators, DI, lifecycle management |
-| [examples](https://github.com/avifenesh/glidemq-examples) | Framework integrations and use-case examples |
+- **Type-safe RPC client** -- export `GlideMQApiType` and use Hono's `hc<>` for end-to-end typed HTTP calls with zero codegen
+- **Edge and serverless ready** -- lightweight `Producer` re-exports let you enqueue jobs from Cloudflare Workers, Vercel Edge Functions, or Deno Deploy without pulling in full Queue/Worker machinery
+- **Multi-runtime** -- Hono runs on Node, Deno, Bun, and edge runtimes; this middleware follows
+- **Two imports, full API** -- `glideMQ()` middleware + `glideMQApi()` router gives you 21 endpoints, SSE events, and scheduler CRUD
+- **Optional Zod validation** -- install `zod` + `@hono/zod-validator` for request validation; works fine without them
 
 ## Install
 
@@ -39,226 +33,44 @@ import { glideMQ, glideMQApi } from '@glidemq/hono';
 
 const app = new Hono();
 
-app.use(glideMQ({
-  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
-  queues: {
-    emails: {
-      processor: async (job) => {
-        await sendEmail(job.data.to, job.data.subject);
-        return { sent: true };
+app.use(
+  glideMQ({
+    connection: { addresses: [{ host: 'localhost', port: 6379 }] },
+    queues: {
+      emails: {
+        processor: async (job) => {
+          await sendEmail(job.data.to, job.data.subject);
+          return { sent: true };
+        },
+        concurrency: 5,
       },
-      concurrency: 5,
+      reports: {},
     },
-    reports: {},
-  },
-}));
+  }),
+);
 
 app.route('/api/queues', glideMQApi());
 
 export default app;
 ```
 
-## API
+## How It Works
 
-### `glideMQ(config)`
+`glideMQ(config)` is a Hono middleware that creates a `QueueRegistry` and injects it into every request as `c.var.glideMQ`. Queues and workers are initialized lazily on first access; producers are created eagerly when requested.
 
-Middleware factory. Creates a `QueueRegistry` and injects it into `c.var.glideMQ`.
+`glideMQApi(opts?)` returns a typed Hono sub-router with all 21 REST endpoints. Mount it at any path with `app.route()`. It reads the registry from `c.var.glideMQ` -- the middleware must be applied first.
 
-```ts
-interface GlideMQConfig {
-  connection?: ConnectionOptions; // Required unless testing: true
-  queues?: Record<string, QueueConfig>;
-  producers?: Record<string, ProducerConfig>; // Lightweight serverless producers
-  prefix?: string;                // Key prefix (default: 'glide')
-  testing?: boolean;              // Use TestQueue/TestWorker (no Valkey)
-  serializer?: Serializer;        // Custom serializer (default: JSON)
-}
-
-interface QueueConfig {
-  processor?: (job: Job) => Promise<any>; // Omit for producer-only
-  concurrency?: number;                   // Default: 1
-  workerOpts?: Record<string, unknown>;
-}
-
-interface ProducerConfig {
-  compression?: 'none' | 'gzip'; // Default: 'none'
-  serializer?: Serializer;       // Overrides config-level serializer
-}
-```
-
-### `glideMQApi(opts?)`
-
-Pre-built REST API sub-router. Mount it on any path.
+You can also pass a pre-built `QueueRegistryImpl` for graceful shutdown control:
 
 ```ts
-interface GlideMQApiConfig {
-  queues?: string[];     // Restrict to specific queues
-  producers?: string[];  // Restrict to specific producers
-}
+const registry = new QueueRegistryImpl({ connection, queues: { emails: { processor } } });
+app.use(glideMQ(registry));
+process.on('SIGTERM', () => registry.closeAll());
 ```
 
-### REST Endpoints
+## Type-Safe RPC Client
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/:name/jobs` | Add a job (via Queue) |
-| POST | `/:name/jobs/wait` | Add a job and wait for its result |
-| POST | `/:name/produce` | Add a job (via Producer - serverless/edge) |
-| GET | `/:name/jobs` | List jobs (query: `type`, `start`, `end`, `excludeData`) |
-| GET | `/:name/jobs/:id` | Get a single job |
-| POST | `/:name/jobs/:id/priority` | Change job priority |
-| POST | `/:name/jobs/:id/delay` | Change job delay |
-| POST | `/:name/jobs/:id/promote` | Promote a delayed job to waiting |
-| GET | `/:name/counts` | Get job counts by state |
-| GET | `/:name/metrics` | Get time-series metrics (query: `type`, `start`, `end`) |
-| POST | `/:name/pause` | Pause queue |
-| POST | `/:name/resume` | Resume queue |
-| POST | `/:name/drain` | Drain waiting jobs |
-| POST | `/:name/retry` | Retry failed jobs |
-| DELETE | `/:name/clean` | Clean old jobs (query: `grace`, `limit`, `type`) |
-| GET | `/:name/workers` | List active workers |
-| GET | `/:name/events` | SSE event stream |
-| GET | `/:name/schedulers` | List all job schedulers |
-| GET | `/:name/schedulers/:schedulerName` | Get a single scheduler |
-| PUT | `/:name/schedulers/:schedulerName` | Upsert a job scheduler |
-| DELETE | `/:name/schedulers/:schedulerName` | Remove a job scheduler |
-
-### Adding Jobs
-
-```bash
-curl -X POST http://localhost:3000/api/queues/emails/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "welcome", "data": {"to": "user@example.com"}, "opts": {"priority": 10}}'
-```
-
-The `opts` object supports: `delay`, `priority`, `attempts`, `timeout`, `removeOnComplete`, `removeOnFail`, `jobId`, `lifo`, `deduplication`, `ordering`, `cost`, `backoff`, `parent`, and `ttl`.
-
-#### Add and Wait
-
-```bash
-# Add a job and block until it completes, returning the result
-curl -X POST http://localhost:3000/api/queues/emails/jobs/wait \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "welcome", "data": {"to": "user@example.com"}, "waitTimeout": 30000}'
-```
-
-#### LIFO Mode
-
-```bash
-curl -X POST http://localhost:3000/api/queues/emails/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "urgent", "data": {}, "opts": {"lifo": true}}'
-```
-
-#### Deduplication
-
-```bash
-curl -X POST http://localhost:3000/api/queues/emails/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "sync", "data": {}, "opts": {"deduplication": {"id": "sync-user-123", "ttl": 60000, "mode": "throttle"}}}'
-```
-
-#### Parent-Child Relationships
-
-```bash
-curl -X POST http://localhost:3000/api/queues/reports/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "generate", "data": {}, "opts": {"parent": {"queue": "emails", "id": "42"}}}'
-```
-
-### Retrying Failed Jobs
-
-```bash
-# Retry up to 50 failed jobs
-curl -X POST http://localhost:3000/api/queues/emails/retry \
-  -H 'Content-Type: application/json' \
-  -d '{"count": 50}'
-
-# Retry all failed jobs (omit body or send empty object)
-curl -X POST http://localhost:3000/api/queues/emails/retry
-```
-
-### Cleaning Old Jobs
-
-```bash
-# Remove completed jobs older than 1 hour, up to 200
-curl -X DELETE 'http://localhost:3000/api/queues/emails/clean?grace=3600000&limit=200&type=completed'
-
-# Remove all failed jobs (defaults: grace=0, limit=100, type=completed)
-curl -X DELETE 'http://localhost:3000/api/queues/emails/clean?type=failed'
-```
-
-### Job Mutations
-
-```bash
-# Change job priority
-curl -X POST http://localhost:3000/api/queues/emails/jobs/42/priority \
-  -H 'Content-Type: application/json' \
-  -d '{"priority": 1}'
-
-# Change job delay
-curl -X POST http://localhost:3000/api/queues/emails/jobs/42/delay \
-  -H 'Content-Type: application/json' \
-  -d '{"delay": 60000}'
-
-# Promote a delayed job to waiting
-curl -X POST http://localhost:3000/api/queues/emails/jobs/42/promote
-```
-
-### Metrics
-
-```bash
-# Get completed job metrics
-curl 'http://localhost:3000/api/queues/emails/metrics?type=completed&start=0&end=-1'
-
-# Get failed job metrics
-curl 'http://localhost:3000/api/queues/emails/metrics?type=failed'
-```
-
-### Job Schedulers
-
-```bash
-# List all schedulers
-curl http://localhost:3000/api/queues/emails/schedulers
-
-# Get a specific scheduler
-curl http://localhost:3000/api/queues/emails/schedulers/daily-report
-
-# Upsert a scheduler (cron pattern)
-curl -X PUT http://localhost:3000/api/queues/emails/schedulers/daily-report \
-  -H 'Content-Type: application/json' \
-  -d '{"schedule": {"pattern": "0 9 * * *", "tz": "America/New_York"}, "template": {"name": "report", "data": {"type": "daily"}}}'
-
-# Upsert a scheduler (interval)
-curl -X PUT http://localhost:3000/api/queues/emails/schedulers/health-check \
-  -H 'Content-Type: application/json' \
-  -d '{"schedule": {"every": 30000}}'
-
-# Remove a scheduler
-curl -X DELETE http://localhost:3000/api/queues/emails/schedulers/daily-report
-```
-
-### SSE Events
-
-The events endpoint streams real-time updates. Available event types: `completed`, `failed`, `progress`, `active`, `waiting`, `stalled`, and `heartbeat`.
-
-```ts
-const eventSource = new EventSource('/api/queues/emails/events');
-
-eventSource.addEventListener('completed', (e) => {
-  console.log('Job completed:', JSON.parse(e.data));
-});
-
-eventSource.addEventListener('failed', (e) => {
-  console.log('Job failed:', JSON.parse(e.data));
-});
-
-eventSource.addEventListener('progress', (e) => {
-  console.log('Job progress:', JSON.parse(e.data));
-});
-```
-
-### Type-Safe RPC Client
+Hono's `hc` client infers route types from the router, giving you end-to-end typed HTTP calls with no codegen and no OpenAPI spec:
 
 ```ts
 import { hc } from 'hono/client';
@@ -266,195 +78,155 @@ import type { GlideMQApiType } from '@glidemq/hono';
 
 const client = hc<GlideMQApiType>('http://localhost:3000/api/queues');
 
-const res = await client.emails.jobs.$post({
+const res = await client[':name'].jobs.$post({
+  param: { name: 'emails' },
   json: { name: 'welcome', data: { to: 'user@example.com' } },
 });
+const job = await res.json(); // typed as JobResponse
 ```
 
-### Exported Types
+## Endpoints
+
+### Jobs
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/:name/jobs` | Add a job |
+| POST | `/:name/jobs/wait` | Add a job and wait for result |
+| GET | `/:name/jobs` | List jobs (query: `type`, `start`, `end`, `excludeData`) |
+| GET | `/:name/jobs/:id` | Get a single job |
+| POST | `/:name/jobs/:id/priority` | Change job priority |
+| POST | `/:name/jobs/:id/delay` | Change job delay |
+| POST | `/:name/jobs/:id/promote` | Promote a delayed job |
+
+### Queue Operations
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/:name/counts` | Get job counts by state |
+| GET | `/:name/metrics` | Get queue metrics (query: `type`, `start`, `end`) |
+| POST | `/:name/pause` | Pause queue |
+| POST | `/:name/resume` | Resume queue |
+| POST | `/:name/drain` | Drain waiting jobs |
+| POST | `/:name/retry` | Retry failed jobs |
+| DELETE | `/:name/clean` | Clean old jobs (query: `grace`, `limit`, `type`) |
+| GET | `/:name/workers` | List active workers |
+| GET | `/:name/events` | SSE event stream |
+| POST | `/:name/produce` | Add a job via Producer (lightweight, serverless) |
+
+### Schedulers
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/:name/schedulers` | List all schedulers |
+| GET | `/:name/schedulers/:schedulerName` | Get a single scheduler |
+| PUT | `/:name/schedulers/:schedulerName` | Upsert a scheduler |
+| DELETE | `/:name/schedulers/:schedulerName` | Remove a scheduler |
+
+## Features
+
+- **21 REST endpoints** -- jobs, counts, metrics, pause/resume, drain, retry, clean, workers, SSE events, schedulers, and producers
+- **Type-safe RPC** -- `hc<GlideMQApiType>` gives end-to-end typed HTTP calls with no codegen
+- **Edge/serverless producers** -- re-exports `Producer`, `ServerlessPool`, and `serverlessPool` from glide-mq for lightweight job enqueuing without worker overhead
+- **Real-time SSE** -- streams `completed`, `failed`, `progress`, `active`, `waiting`, `stalled`, and `heartbeat` events via Hono's `streamSSE`
+- **Queue access control** -- restrict which queues and producers are exposed via `GlideMQApiConfig`
+- **Optional Zod validation** -- auto-detected at startup; degrades gracefully to manual parsing when not installed
+- **Scheduler CRUD** -- create, read, update, and delete repeatable job schedulers (cron or interval)
+- **Testing mode** -- `createTestApp()` uses in-memory TestQueue/TestWorker, no Valkey required
+
+## Configuration
+
+### GlideMQConfig
 
 ```ts
-import type {
-  GlideMQConfig,       // Middleware configuration
-  GlideMQEnv,          // Hono env type for c.var.glideMQ
-  GlideMQApiConfig,    // API sub-router options
-  QueueConfig,         // Per-queue config (processor, concurrency)
-  ProducerConfig,      // Per-producer config (compression, serializer)
-  QueueRegistry,       // Registry interface (for custom implementations)
-  ManagedQueue,        // { queue, worker } pair returned by registry.get()
-  JobResponse,         // Serialized job shape returned by API
-  JobCountsResponse,   // { waiting, active, delayed, completed, failed }
-  WorkerInfoResponse,  // Worker metadata
-  GlideMQApiType,      // Hono RPC type for hc<GlideMQApiType>()
-  ProducerOptions,     // glide-mq Producer constructor options
-} from '@glidemq/hono';
+interface GlideMQConfig {
+  connection?: ConnectionOptions; // Required unless testing: true
+  queues?: Record<string, QueueConfig>;
+  producers?: Record<string, ProducerConfig>;
+  prefix?: string;      // Key prefix (default: 'glide')
+  testing?: boolean;    // In-memory mode, no Valkey needed
+  serializer?: Serializer;
+}
 
-// Re-exported from glide-mq for convenience:
-import { Producer, ServerlessPool, serverlessPool } from '@glidemq/hono';
+interface QueueConfig {
+  processor?: (job: Job) => Promise<any>; // Omit for producer-only queues
+  concurrency?: number;                   // Default: 1
+  workerOpts?: Record<string, unknown>;
+}
+
+interface ProducerConfig {
+  compression?: 'none' | 'gzip';
+  serializer?: Serializer;
+}
 ```
 
-### Utilities
-
-For advanced use cases (custom routes, custom API sub-routers):
+### GlideMQApiConfig
 
 ```ts
-import { serializeJob, serializeJobs, createEventsRoute } from '@glidemq/hono';
-
-// serializeJob(job) - Convert a glide-mq Job to a plain JSON-safe object
-// serializeJobs(jobs) - Serialize an array of jobs
-// createEventsRoute() - SSE event handler factory for custom routers
+interface GlideMQApiConfig {
+  queues?: string[];     // Restrict to specific queue names
+  producers?: string[];  // Restrict to specific producer names
+}
 ```
 
-## Serverless / Edge
-
-For serverless and edge environments (Cloudflare Workers, Deno Deploy, Vercel Edge Functions), use **producers** instead of full queues. Producers are lightweight -- they only support `add()` and `addBulk()`, with no workers, no event emitters, and no state tracking. They return plain string IDs instead of Job objects.
-
-### Configuration
-
-```ts
-import { Hono } from 'hono';
-import { glideMQ, glideMQApi } from '@glidemq/hono';
-
-const app = new Hono();
-
-app.use(glideMQ({
-  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
-  producers: {
-    emails: { compression: 'gzip' },
-    notifications: {},
-  },
-}));
-
-app.route('/api/queues', glideMQApi());
-
-export default app;
-```
-
-You can mix queues and producers in the same config -- use queues for services that process jobs and producers for services that only enqueue:
-
-```ts
-app.use(glideMQ({
-  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
-  queues: {
-    reports: { processor: processReport, concurrency: 3 },
-  },
-  producers: {
-    emails: {},
-    notifications: { compression: 'gzip' },
-  },
-}));
-```
-
-### The `POST /:name/produce` endpoint
-
-The produce endpoint accepts the same body as `POST /:name/jobs` but uses a `Producer` under the hood. It returns a plain `{ id }` response instead of a full serialized job.
-
-```bash
-curl -X POST http://localhost:3000/api/queues/emails/produce \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "welcome", "data": {"to": "user@example.com"}, "opts": {"priority": 10}}'
-# => {"id": "42"}
-```
-
-### When to use producers vs queues
-
-| Use case | Use |
-|----------|-----|
-| Serverless functions (Lambda, Edge Workers) that enqueue jobs | `producers` |
-| Long-running services that process jobs | `queues` with `processor` |
-| Services that only enqueue, even on traditional servers | Either works; `producers` use fewer resources |
-| Need `getJobs()`, `getJobCounts()`, pause/resume, SSE events | `queues` |
-
-### Direct registry access
-
-```ts
-app.post('/enqueue', async (c) => {
-  const registry = c.var.glideMQ;
-  const producer = registry.getProducer('emails');
-
-  const jobId = await producer.add('welcome', { to: 'user@example.com' });
-  return c.json({ id: jobId });
-});
-```
-
-You can also import `Producer` directly from `@glidemq/hono` for standalone usage:
-
-```ts
-import { Producer } from '@glidemq/hono';
-
-const producer = new Producer('emails', {
-  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
-});
-
-const id = await producer.add('send', { to: 'user@example.com' });
-await producer.close();
-```
+Producers are lightweight alternatives to queues for serverless/edge -- they only support `add()` and `addBulk()`, return string IDs, and carry no worker or event-emitter overhead. Configure them alongside queues and use `POST /:name/produce` or access them directly via `c.var.glideMQ.getProducer(name)`.
 
 ## Testing
 
-No Valkey needed for unit tests:
+No Valkey needed. `createTestApp` wires middleware and router in testing mode using in-memory TestQueue/TestWorker:
 
 ```ts
 import { createTestApp } from '@glidemq/hono/testing';
 
 const { app, registry } = createTestApp({
-  emails: {
-    processor: async (job) => ({ sent: true }),
-  },
+  emails: { processor: async (job) => ({ sent: true }) },
 });
 
 const res = await app.request('/emails/jobs', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ name: 'test', data: {} }),
+  body: JSON.stringify({ name: 'welcome', data: { to: 'user@example.com' } }),
 });
 
 expect(res.status).toBe(201);
-
-// Cleanup
 await registry.closeAll();
 ```
 
-> **Note:** SSE in testing mode emits `counts` events (polling-based state diffs) rather than job lifecycle events (`completed`, `failed`, etc.).
+> **Note:** SSE in testing mode emits `counts` events (polling-based state diffs) rather than job lifecycle events.
 
 ## Direct Registry Access
 
-Access the registry in your own routes:
+Access the registry in your own routes via `c.var.glideMQ`:
 
 ```ts
 app.post('/send-email', async (c) => {
-  const registry = c.var.glideMQ;
-  const { queue } = registry.get('emails');
-
-  const job = await queue.add('send', {
-    to: 'user@example.com',
-    subject: 'Hello',
-  });
-
+  const { queue } = c.var.glideMQ.get('emails');
+  const job = await queue.add('send', { to: 'user@example.com', subject: 'Hello' });
   return c.json({ jobId: job?.id });
 });
 ```
 
-## Shutdown
+## Limitations
 
-For graceful shutdown, construct the registry yourself and pass it to `glideMQ()`:
+- Graceful shutdown is manual -- call `registry.closeAll()` yourself (Hono has no lifecycle hooks like Fastify's `onClose`)
+- SSE requires a long-lived connection; edge runtimes with short execution limits may not support it
+- Producers are not available in testing mode; use queues instead
+- Queue names must match `/^[a-zA-Z0-9_-]{1,128}$/`
 
-```ts
-import { glideMQ, glideMQApi, QueueRegistryImpl } from '@glidemq/hono';
+## Ecosystem
 
-const registry = new QueueRegistryImpl({
-  connection: { addresses: [{ host: 'localhost', port: 6379 }] },
-  queues: { emails: { processor: processEmail } },
-});
+| Package | Description |
+|---------|-------------|
+| [glide-mq](https://github.com/avifenesh/glide-mq) | Core queue library -- producers, workers, schedulers, workflows |
+| **@glidemq/hono** | Hono REST API + SSE middleware (you are here) |
+| [@glidemq/fastify](https://github.com/avifenesh/glidemq-fastify) | Fastify REST API + SSE plugin |
+| [@glidemq/nestjs](https://github.com/avifenesh/glidemq-nestjs) | NestJS module -- decorators, DI, lifecycle management |
+| [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard) | Express web UI for monitoring and managing queues |
+| [examples](https://github.com/avifenesh/glidemq-examples) | Framework integrations and use-case examples |
 
-app.use(glideMQ(registry));
-app.route('/api/queues', glideMQApi());
+## Contributing
 
-process.on('SIGTERM', async () => {
-  await registry.closeAll();
-  process.exit(0);
-});
-```
+Bug reports and pull requests are welcome at [github.com/avifenesh/glidemq-hono](https://github.com/avifenesh/glidemq-hono).
 
 ## License
 
