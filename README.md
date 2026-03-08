@@ -27,6 +27,8 @@ Optional Zod validation:
 npm install zod @hono/zod-validator
 ```
 
+Requires **glide-mq 0.9+**.
+
 ## Quick Start
 
 ```ts
