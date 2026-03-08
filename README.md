@@ -5,6 +5,8 @@
 
 REST API and real-time SSE for [glide-mq](https://github.com/avifenesh/glide-mq) job queues, as Hono middleware. One middleware + one router -- declare queues, get 21 endpoints with type-safe RPC.
 
+> If glide-mq is useful to you, consider [giving it a star](https://github.com/avifenesh/glide-mq). It helps others discover the project.
+
 ## Why @glidemq/hono
 
 - **Type-safe RPC client** -- export `GlideMQApiType` and use Hono's `hc<>` for end-to-end typed HTTP calls with zero codegen
@@ -220,6 +222,7 @@ app.post('/send-email', async (c) => {
 | [glide-mq](https://github.com/avifenesh/glide-mq) | Core queue library -- producers, workers, schedulers, workflows |
 | **@glidemq/hono** | Hono REST API + SSE middleware (you are here) |
 | [@glidemq/fastify](https://github.com/avifenesh/glidemq-fastify) | Fastify REST API + SSE plugin |
+| [@glidemq/hapi](https://github.com/avifenesh/glidemq-hapi) | Hapi REST API + SSE plugin |
 | [@glidemq/nestjs](https://github.com/avifenesh/glidemq-nestjs) | NestJS module -- decorators, DI, lifecycle management |
 | [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard) | Express web UI for monitoring and managing queues |
 | [examples](https://github.com/avifenesh/glidemq-examples) | Framework integrations and use-case examples |
