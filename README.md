@@ -10,7 +10,7 @@ REST API and real-time SSE for [glide-mq](https://github.com/avifenesh/glide-mq)
 ## Why @glidemq/hono
 
 - **Type-safe RPC client** -- export `GlideMQApiType` and use Hono's `hc<>` for end-to-end typed HTTP calls with zero codegen
-- **Edge and serverless ready** -- lightweight `Producer` re-exports let you enqueue jobs from Cloudflare Workers, Vercel Edge Functions, or Deno Deploy without pulling in full Queue/Worker machinery
+- **Edge and serverless ready** -- lightweight `Producer` re-exports let you enqueue jobs from Cloudflare Workers, Vercel Edge Functions, or Deno Deploy without pulling in full Queue/Worker machinery. Workers and SSE require a long-lived runtime (Node, Bun, Deno).
 - **Multi-runtime** -- Hono runs on Node, Deno, Bun, and edge runtimes; this middleware follows
 - **Two imports, full API** -- `glideMQ()` middleware + `glideMQApi()` router gives you 21 endpoints, SSE events, and scheduler CRUD
 - **Optional Zod validation** -- install `zod` + `@hono/zod-validator` for request validation; works fine without them
