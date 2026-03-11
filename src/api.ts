@@ -40,7 +40,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   const VALID_QUEUE_NAME = /^[a-zA-Z0-9_-]{1,128}$/;
 
   const guardQueue = async (c: Context<GlideMQEnv>, next: () => Promise<void>) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
 
     if (!VALID_QUEUE_NAME.test(name)) {
       return c.json({ error: 'Invalid queue name' }, 400);
@@ -56,7 +56,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // Guard for /:name/produce - checks producer config instead of queue config
   const guardProducer = async (c: Context<GlideMQEnv>, next: () => Promise<void>) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
 
     if (!VALID_QUEUE_NAME.test(name)) {
       return c.json({ error: 'Invalid queue name' }, 400);
@@ -72,7 +72,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // Mount produce endpoint BEFORE the queue guard so it uses its own guard
   api.post('/:name/produce', guardProducer, async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const producer = registry.getProducer(name);
     const body = await c.req.json<{ name: string; data?: unknown; opts?: Record<string, unknown> }>();
@@ -112,7 +112,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // POST /:name/jobs - Add a job
   if (schemas && zv) {
     api.post('/:name/jobs', zv('json', schemas.addJobSchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
       const body = c.req.valid('json' as never) as { name: string; data: unknown; opts: Record<string, unknown> };
@@ -125,7 +125,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.post('/:name/jobs', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
       const body = await c.req.json<{ name: string; data?: unknown; opts?: Record<string, unknown> }>();
@@ -166,7 +166,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // GET /:name/jobs - List jobs
   if (schemas && zv) {
     api.get('/:name/jobs', zv('query', schemas.getJobsQuerySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -182,7 +182,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.get('/:name/jobs', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -212,8 +212,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // GET /:name/jobs/:id - Get a single job
   api.get('/:name/jobs/:id', async (c) => {
-    const name = c.req.param('name');
-    const jobId = c.req.param('id');
+    const name = c.req.param('name')!;
+    const jobId = c.req.param('id')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -226,7 +226,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // GET /:name/counts - Get job counts
   api.get('/:name/counts', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -236,7 +236,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // POST /:name/pause - Pause queue
   api.post('/:name/pause', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -246,7 +246,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // POST /:name/resume - Resume queue
   api.post('/:name/resume', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -256,7 +256,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // POST /:name/drain - Drain queue
   api.post('/:name/drain', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -267,7 +267,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // POST /:name/retry - Retry failed jobs
   if (schemas && zv) {
     api.post('/:name/retry', zv('json', schemas.retryBodySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -278,7 +278,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.post('/:name/retry', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -302,7 +302,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // DELETE /:name/clean - Clean old jobs
   if (schemas && zv) {
     api.delete('/:name/clean', zv('query', schemas.cleanQuerySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -313,7 +313,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.delete('/:name/clean', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -342,7 +342,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // GET /:name/workers - List workers
   api.get('/:name/workers', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -356,7 +356,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // GET /:name/metrics - Get time-series metrics
   if (schemas && zv) {
     api.get('/:name/metrics', zv('query', schemas.metricsQuerySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -367,7 +367,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.get('/:name/metrics', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -396,8 +396,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // POST /:name/jobs/:id/priority - Change job priority
   if (schemas && zv) {
     api.post('/:name/jobs/:id/priority', zv('json', schemas.changePriorityBodySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
-      const jobId = c.req.param('id');
+      const name = c.req.param('name')!;
+      const jobId = c.req.param('id')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -412,8 +412,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.post('/:name/jobs/:id/priority', async (c) => {
-      const name = c.req.param('name');
-      const jobId = c.req.param('id');
+      const name = c.req.param('name')!;
+      const jobId = c.req.param('id')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -435,8 +435,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // POST /:name/jobs/:id/delay - Change job delay
   if (schemas && zv) {
     api.post('/:name/jobs/:id/delay', zv('json', schemas.changeDelayBodySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
-      const jobId = c.req.param('id');
+      const name = c.req.param('name')!;
+      const jobId = c.req.param('id')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -451,8 +451,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.post('/:name/jobs/:id/delay', async (c) => {
-      const name = c.req.param('name');
-      const jobId = c.req.param('id');
+      const name = c.req.param('name')!;
+      const jobId = c.req.param('id')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -473,8 +473,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // POST /:name/jobs/:id/promote - Promote a delayed job
   api.post('/:name/jobs/:id/promote', async (c) => {
-    const name = c.req.param('name');
-    const jobId = c.req.param('id');
+    const name = c.req.param('name')!;
+    const jobId = c.req.param('id')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -489,7 +489,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // GET /:name/schedulers - List all schedulers
   api.get('/:name/schedulers', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
 
@@ -499,7 +499,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // GET /:name/schedulers/:schedulerName - Get a single scheduler
   api.get('/:name/schedulers/:schedulerName', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const schedulerName = c.req.param('schedulerName');
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
@@ -517,7 +517,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       '/:name/schedulers/:schedulerName',
       zv('json', schemas.upsertSchedulerBodySchema, onValidationError),
       async (c) => {
-        const name = c.req.param('name');
+        const name = c.req.param('name')!;
         const schedulerName = c.req.param('schedulerName');
         const registry = getRegistry(c);
         const { queue } = registry.get(name);
@@ -533,7 +533,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     );
   } else {
     api.put('/:name/schedulers/:schedulerName', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const schedulerName = c.req.param('schedulerName');
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
@@ -551,7 +551,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
 
   // DELETE /:name/schedulers/:schedulerName - Remove a scheduler
   api.delete('/:name/schedulers/:schedulerName', async (c) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const schedulerName = c.req.param('schedulerName');
     const registry = getRegistry(c);
     const { queue } = registry.get(name);
@@ -563,7 +563,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   // POST /:name/jobs/wait - Add a job and wait for result
   if (schemas && zv) {
     api.post('/:name/jobs/wait', zv('json', schemas.addAndWaitBodySchema, onValidationError), async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 
@@ -583,7 +583,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   } else {
     api.post('/:name/jobs/wait', async (c) => {
-      const name = c.req.param('name');
+      const name = c.req.param('name')!;
       const registry = getRegistry(c);
       const { queue } = registry.get(name);
 

@@ -49,7 +49,7 @@ function releaseQueueEvents(name: string): void {
  */
 export function createEventsRoute() {
   return (c: Context<GlideMQEnv>) => {
-    const name = c.req.param('name');
+    const name = c.req.param('name')!;
     const registry = c.var.glideMQ;
 
     if (registry.testing) {
