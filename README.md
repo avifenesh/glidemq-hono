@@ -2,11 +2,13 @@
 
 [![npm](https://img.shields.io/npm/v/@glidemq/hono)](https://www.npmjs.com/package/@glidemq/hono)
 [![license](https://img.shields.io/npm/l/@glidemq/hono)](https://github.com/avifenesh/glidemq-hono/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-glide--mq.dev-6366f1)](https://avifenesh.github.io/glide-mq.dev/)
 
 REST API and real-time SSE for [glide-mq](https://github.com/avifenesh/glide-mq) job queues, as Hono middleware. One middleware + one router -- declare queues, get 21 endpoints with type-safe RPC.
 
 > If glide-mq is useful to you, consider [giving it a star](https://github.com/avifenesh/glide-mq). It helps others discover the project.
 
+**[Full documentation](https://avifenesh.github.io/glide-mq.dev/integrations/hono)** | **[Core docs](https://avifenesh.github.io/glide-mq.dev/guide/getting-started)**
 ## Why @glidemq/hono
 
 - **Type-safe RPC client** -- export `GlideMQApiType` and use Hono's `hc<>` for end-to-end typed HTTP calls with zero codegen

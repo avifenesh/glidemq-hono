@@ -51,7 +51,7 @@
   "bugs": {
     "url": "https://github.com/avifenesh/glidemq-hono/issues"
   },
-  "homepage": "https://github.com/avifenesh/glidemq-hono#readme",
+  "homepage": "https://avifenesh.github.io/glide-mq.dev/integrations/hono",
   "sideEffects": false,
   "peerDependencies": {
     "@hono/zod-validator": ">=0.4.0",

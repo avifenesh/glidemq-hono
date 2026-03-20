@@ -5,6 +5,11 @@ import { serializeJob, serializeJobs } from './serializers';
 import { buildSchemas, getZValidator, hasZod } from './schemas';
 import { createEventsRoute } from './events';
 
+const ALLOWED_JOB_OPTS = [
+  'delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail',
+  'jobId', 'lifo', 'deduplication', 'ordering', 'cost', 'backoff', 'parent', 'ttl',
+];
+
 function getRegistry(c: { var: { glideMQ: QueueRegistry } }): QueueRegistry {
   const registry = c.var.glideMQ;
   if (!registry) {
@@ -32,7 +37,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   const api = new Hono<GlideMQEnv>();
 
   api.onError((err, c) => {
-    console.error('[glidemq]', err);
     return c.json({ error: 'Internal server error' }, 500);
   });
 
@@ -81,10 +85,9 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
     }
 
-    const ALLOWED_OPTS = ['delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail'];
     const rawOpts = body.opts ?? {};
     const safeOpts: Record<string, unknown> = {};
-    for (const key of ALLOWED_OPTS) {
+    for (const key of ALLOWED_JOB_OPTS) {
       if (key in rawOpts) safeOpts[key] = rawOpts[key];
     }
 
@@ -109,7 +112,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     }
   };
 
-  // POST /:name/jobs - Add a job
   if (schemas && zv) {
     api.post('/:name/jobs', zv('json', schemas.addJobSchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -134,25 +136,9 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
         return c.json({ error: 'Validation failed', details: ['name: Required'] }, 400);
       }
 
-      const ALLOWED_OPTS = [
-        'delay',
-        'priority',
-        'attempts',
-        'timeout',
-        'removeOnComplete',
-        'removeOnFail',
-        'jobId',
-        'lifo',
-        'deduplication',
-        'ordering',
-        'cost',
-        'backoff',
-        'parent',
-        'ttl',
-      ];
       const rawOpts = body.opts ?? {};
       const safeOpts: Record<string, unknown> = {};
-      for (const key of ALLOWED_OPTS) {
+      for (const key of ALLOWED_JOB_OPTS) {
         if (key in rawOpts) safeOpts[key] = rawOpts[key];
       }
       const job = await queue.add(body.name, body.data ?? {}, safeOpts as any);
@@ -163,7 +149,7 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // GET /:name/jobs - List jobs
+
   if (schemas && zv) {
     api.get('/:name/jobs', zv('query', schemas.getJobsQuerySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -210,7 +196,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // GET /:name/jobs/:id - Get a single job
   api.get('/:name/jobs/:id', async (c) => {
     const name = c.req.param('name')!;
     const jobId = c.req.param('id')!;
@@ -224,7 +209,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json(serializeJob(job));
   });
 
-  // GET /:name/counts - Get job counts
   api.get('/:name/counts', async (c) => {
     const name = c.req.param('name')!;
     const registry = getRegistry(c);
@@ -234,7 +218,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json(counts);
   });
 
-  // POST /:name/pause - Pause queue
   api.post('/:name/pause', async (c) => {
     const name = c.req.param('name')!;
     const registry = getRegistry(c);
@@ -244,7 +227,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.body(null, 204);
   });
 
-  // POST /:name/resume - Resume queue
   api.post('/:name/resume', async (c) => {
     const name = c.req.param('name')!;
     const registry = getRegistry(c);
@@ -254,7 +236,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.body(null, 204);
   });
 
-  // POST /:name/drain - Drain queue
   api.post('/:name/drain', async (c) => {
     const name = c.req.param('name')!;
     const registry = getRegistry(c);
@@ -264,7 +245,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.body(null, 204);
   });
 
-  // POST /:name/retry - Retry failed jobs
   if (schemas && zv) {
     api.post('/:name/retry', zv('json', schemas.retryBodySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -299,7 +279,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // DELETE /:name/clean - Clean old jobs
   if (schemas && zv) {
     api.delete('/:name/clean', zv('query', schemas.cleanQuerySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -340,7 +319,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // GET /:name/workers - List workers
   api.get('/:name/workers', async (c) => {
     const name = c.req.param('name')!;
     const registry = getRegistry(c);
@@ -350,10 +328,8 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json(workers);
   });
 
-  // GET /:name/events - SSE stream
   api.get('/:name/events', createEventsRoute());
 
-  // GET /:name/metrics - Get time-series metrics
   if (schemas && zv) {
     api.get('/:name/metrics', zv('query', schemas.metricsQuerySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -393,7 +369,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // POST /:name/jobs/:id/priority - Change job priority
   if (schemas && zv) {
     api.post('/:name/jobs/:id/priority', zv('json', schemas.changePriorityBodySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -432,7 +407,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // POST /:name/jobs/:id/delay - Change job delay
   if (schemas && zv) {
     api.post('/:name/jobs/:id/delay', zv('json', schemas.changeDelayBodySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
@@ -471,7 +445,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // POST /:name/jobs/:id/promote - Promote a delayed job
   api.post('/:name/jobs/:id/promote', async (c) => {
     const name = c.req.param('name')!;
     const jobId = c.req.param('id')!;
@@ -487,7 +460,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.body(null, 204);
   });
 
-  // GET /:name/schedulers - List all schedulers
   api.get('/:name/schedulers', async (c) => {
     const name = c.req.param('name')!;
     const registry = getRegistry(c);
@@ -497,7 +469,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json(schedulers);
   });
 
-  // GET /:name/schedulers/:schedulerName - Get a single scheduler
   api.get('/:name/schedulers/:schedulerName', async (c) => {
     const name = c.req.param('name')!;
     const schedulerName = c.req.param('schedulerName');
@@ -511,7 +482,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json(scheduler);
   });
 
-  // PUT /:name/schedulers/:schedulerName - Upsert a scheduler
   if (schemas && zv) {
     api.put(
       '/:name/schedulers/:schedulerName',
@@ -549,7 +519,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     });
   }
 
-  // DELETE /:name/schedulers/:schedulerName - Remove a scheduler
   api.delete('/:name/schedulers/:schedulerName', async (c) => {
     const name = c.req.param('name')!;
     const schedulerName = c.req.param('schedulerName');
@@ -560,7 +529,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.body(null, 204);
   });
 
-  // POST /:name/jobs/wait - Add a job and wait for result
   if (schemas && zv) {
     api.post('/:name/jobs/wait', zv('json', schemas.addAndWaitBodySchema, onValidationError), async (c) => {
       const name = c.req.param('name')!;
