@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import type { Context } from 'hono';
 import type { GlideMQEnv, GlideMQApiConfig, QueueRegistry } from './types';
 import { serializeJob, serializeJobs } from './serializers';
@@ -574,6 +575,75 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       return c.json(result);
     });
   }
+
+  // GET /:name/flows/:id/usage - Aggregated usage across a flow
+  api.get('/:name/flows/:id/usage', async (c) => {
+    const name = c.req.param('name')!;
+    const flowId = c.req.param('id')!;
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    const usage = await (queue as any).getFlowUsage(flowId);
+    return c.json(usage);
+  });
+
+  // GET /:name/flows/:id/budget - Budget state for a flow
+  api.get('/:name/flows/:id/budget', async (c) => {
+    const name = c.req.param('name')!;
+    const flowId = c.req.param('id')!;
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    const budget = await (queue as any).getFlowBudget(flowId);
+    if (!budget) {
+      return c.json({ error: 'No budget set for this flow' }, 404);
+    }
+    return c.json(budget);
+  });
+
+  // GET /:name/jobs/:id/stream - SSE stream of job streaming chunks
+  api.get('/:name/jobs/:id/stream', (c) => {
+    const name = c.req.param('name')!;
+    const jobId = c.req.param('id')!;
+    const registry = getRegistry(c);
+    const { queue } = registry.get(name);
+
+    return streamSSE(c, async (stream) => {
+      let lastId = c.req.header('Last-Event-ID') || c.req.query('lastId') || undefined;
+      let running = true;
+
+      stream.onAbort(() => {
+        running = false;
+      });
+
+      while (running) {
+        const entries = await (queue as any).readStream(jobId, { lastId, count: 100 });
+        for (const entry of entries) {
+          await stream.writeSSE({
+            id: entry.id,
+            data: JSON.stringify(entry.fields),
+          });
+          lastId = entry.id;
+        }
+
+        const job = await queue.getJob(jobId);
+        if (!job) break;
+        const state = await (job as any).getState();
+        if (state === 'completed' || state === 'failed') {
+          const trailing = await (queue as any).readStream(jobId, { lastId, count: 100 });
+          for (const entry of trailing) {
+            await stream.writeSSE({
+              id: entry.id,
+              data: JSON.stringify(entry.fields),
+            });
+          }
+          break;
+        }
+
+        await stream.sleep(500);
+      }
+    });
+  });
 
   return api;
 }

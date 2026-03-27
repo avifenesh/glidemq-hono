@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@glidemq/hono)](https://www.npmjs.com/package/@glidemq/hono)
 [![license](https://img.shields.io/npm/l/@glidemq/hono)](https://github.com/avifenesh/glidemq-hono/blob/main/LICENSE)
 
-Hono middleware that turns [glide-mq](https://github.com/avifenesh/glide-mq) queues into a REST API with real-time SSE and type-safe RPC - one middleware, one router, 21 endpoints.
+Hono middleware that turns [glide-mq](https://github.com/avifenesh/glide-mq) queues into a REST API with real-time SSE and type-safe RPC - one middleware, one router, 24 endpoints. Built for both traditional job queues and AI agent orchestration.
 
 ## Why
 
@@ -19,7 +19,7 @@ npm install @glidemq/hono glide-mq hono
 
 Optional - install `zod` and `@hono/zod-validator` for request validation.
 
-Requires **glide-mq >= 0.13.0** and **Hono 4+**.
+Requires **glide-mq >= 0.14.0** and **Hono 4+**.
 
 ## Quick start
 
@@ -48,7 +48,7 @@ app.route("/api/queues", glideMQApi());
 export default app;
 ```
 
-`glideMQ()` injects a registry into `c.var.glideMQ`. `glideMQApi()` returns a typed sub-router with 21 endpoints.
+`glideMQ()` injects a registry into `c.var.glideMQ`. `glideMQApi()` returns a typed sub-router with 24 endpoints.
 
 ## Type-safe RPC client
 
@@ -66,7 +66,15 @@ const job = await res.json(); // typed as JobResponse
 
 ## AI-native features
 
-glide-mq 0.13+ provides AI orchestration primitives - token/cost tracking, real-time streaming, human-in-the-loop suspend/signal, model failover chains, budget caps, dual-axis rate limiting, and vector search. All are accessible through this middleware via the REST API or `c.var.glideMQ` registry. See the [glide-mq docs](https://github.com/avifenesh/glide-mq) for details.
+glide-mq is an AI-native message queue. This middleware exposes AI orchestration primitives as REST endpoints:
+
+- **`GET /:name/flows/:id/usage`** - aggregated token/cost usage across all jobs in a flow
+- **`GET /:name/flows/:id/budget`** - budget state (limits, spent, exceeded) for a flow
+- **`GET /:name/jobs/:id/stream`** - SSE stream of real-time chunks from a streaming job
+
+Jobs returned from all endpoints include AI fields when present: `usage`, `signals`, `budgetKey`, `fallbackIndex`, `tpmTokens`. SSE events include `usage`, `suspended`, and `budget-exceeded` event types.
+
+See the [glide-mq docs](https://github.com/avifenesh/glide-mq) for the full AI primitives API.
 
 ## Configuration
 

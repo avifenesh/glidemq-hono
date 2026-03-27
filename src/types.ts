@@ -99,6 +99,21 @@ export interface JobResponse {
   orderingKey?: string;
   cost?: number;
   schedulerName?: string;
+  usage?: {
+    model?: string;
+    provider?: string;
+    tokens?: Record<string, number>;
+    totalTokens?: number;
+    costs?: Record<string, number>;
+    totalCost?: number;
+    costUnit?: string;
+    latencyMs?: number;
+    cached?: boolean;
+  };
+  signals?: Array<{ name: string; data: any; receivedAt: number }>;
+  budgetKey?: string;
+  fallbackIndex?: number;
+  tpmTokens?: number;
 }
 
 export interface JobCountsResponse {
