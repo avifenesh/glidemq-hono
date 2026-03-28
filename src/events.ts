@@ -72,7 +72,17 @@ function createLiveSSE(c: Context<GlideMQEnv>, registry: QueueRegistry, name: st
   let eventId = 0;
 
   return streamSSE(c, async (stream) => {
-    const eventTypes = ['completed', 'failed', 'progress', 'stalled', 'active', 'waiting', 'usage', 'suspended', 'budget-exceeded'];
+    const eventTypes = [
+      'completed',
+      'failed',
+      'progress',
+      'stalled',
+      'active',
+      'waiting',
+      'usage',
+      'suspended',
+      'budget-exceeded',
+    ];
     const listeners: Array<{ event: string; handler: (...args: any[]) => void }> = [];
     let running = true;
 

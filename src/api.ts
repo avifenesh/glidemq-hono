@@ -7,8 +7,20 @@ import { buildSchemas, getZValidator, hasZod } from './schemas';
 import { createEventsRoute } from './events';
 
 const ALLOWED_JOB_OPTS = [
-  'delay', 'priority', 'attempts', 'timeout', 'removeOnComplete', 'removeOnFail',
-  'jobId', 'lifo', 'deduplication', 'ordering', 'cost', 'backoff', 'parent', 'ttl',
+  'delay',
+  'priority',
+  'attempts',
+  'timeout',
+  'removeOnComplete',
+  'removeOnFail',
+  'jobId',
+  'lifo',
+  'deduplication',
+  'ordering',
+  'cost',
+  'backoff',
+  'parent',
+  'ttl',
 ];
 
 function getRegistry(c: { var: { glideMQ: QueueRegistry } }): QueueRegistry {
@@ -149,7 +161,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       return c.json(serializeJob(job), 201);
     });
   }
-
 
   if (schemas && zv) {
     api.get('/:name/jobs', zv('query', schemas.getJobsQuerySchema, onValidationError), async (c) => {
