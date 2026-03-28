@@ -105,7 +105,7 @@ await registry.closeAll();
 ## Links
 
 - [glide-mq](https://github.com/avifenesh/glide-mq) - core library
-- [Full documentation](https://avifenesh.github.io/glide-mq.dev/integrations/hono)
+- [Full documentation](https://avifenesh.github.io/glidemq.dev/integrations/hono)
 - [Issues](https://github.com/avifenesh/glidemq-hono/issues)
 - [@glidemq/fastify](https://github.com/avifenesh/glidemq-fastify) | [@glidemq/hapi](https://github.com/avifenesh/glidemq-hapi) | [@glidemq/nestjs](https://github.com/avifenesh/glidemq-nestjs) | [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard)
 
