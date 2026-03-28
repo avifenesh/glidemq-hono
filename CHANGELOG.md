@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Add AI-native endpoints: `GET /:name/flows/:id/usage`, `GET /:name/flows/:id/budget`, `GET /:name/jobs/:id/stream`
+- Add AI event types to SSE: `usage`, `suspended`, `budget-exceeded`
+- Serialize AI fields on jobs: `usage`, `signals`, `budgetKey`, `fallbackIndex`, `tpmTokens`
+- Expand to 24 REST endpoints
+- Require glide-mq >=0.14.0
+
 ## 0.2.1
 
 - Require glide-mq >=0.9.0
