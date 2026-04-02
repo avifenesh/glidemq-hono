@@ -367,6 +367,52 @@ describe('glideMQApi', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('GET /usage/summary', () => {
+    it('returns 500 in testing mode without a live connection', async () => {
+      const { app } = setup();
+      const res = await app.request('/usage/summary');
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain('Connection config required');
+    });
+  });
+
+  describe('POST /broadcast/:name', () => {
+    it('returns 400 when subject is missing', async () => {
+      const { app } = setup();
+      const res = await app.request('/broadcast/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: { ok: true } }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Validation failed');
+    });
+
+    it('returns 500 in testing mode after validation passes', async () => {
+      const { app } = setup();
+      const res = await app.request('/broadcast/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: 'events.created', data: { ok: true } }),
+      });
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain('Connection config required');
+    });
+  });
+
+  describe('GET /broadcast/:name/events', () => {
+    it('returns 400 when subscription is missing', async () => {
+      const { app } = setup();
+      const res = await app.request('/broadcast/emails/events');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('subscription');
+    });
+  });
 });
 
 describe('glideMQApi with restricted queues', () => {
@@ -405,6 +451,18 @@ describe('glideMQApi with restricted queues', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'test', data: {} }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for non-whitelisted broadcast publish', async () => {
+    const { app, registry } = buildRestrictedApp(['emails']);
+    cleanup = () => registry.closeAll();
+
+    const res = await app.request('/broadcast/secret', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject: 'secret.created' }),
     });
     expect(res.status).toBe(404);
   });

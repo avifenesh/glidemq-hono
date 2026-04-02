@@ -23,12 +23,175 @@ const ALLOWED_JOB_OPTS = [
   'ttl',
 ];
 
+const VALID_QUEUE_NAME = /^[a-zA-Z0-9_-]{1,128}$/;
+const SSE_HEARTBEAT_MS = 15_000;
+
+type BroadcastClient = {
+  matcher: ((subject: string) => boolean) | null;
+  stream: {
+    writeSSE: (chunk: { data: string; event?: string; id?: string }) => Promise<void>;
+  };
+};
+
+type SharedBroadcastStream = {
+  clients: Set<BroadcastClient>;
+  closing: boolean;
+  ready: Promise<void>;
+  worker: { close: () => Promise<void> };
+  close: () => Promise<void>;
+};
+
+const broadcastStreams = new Map<string, SharedBroadcastStream>();
+
 function getRegistry(c: { var: { glideMQ: QueueRegistry } }): QueueRegistry {
   const registry = c.var.glideMQ;
   if (!registry) {
     throw new Error('GlideMQ middleware not applied. Use app.use(glideMQ(config)) first.');
   }
   return registry;
+}
+
+function parseIntegerParam(raw: string | undefined, name: string, opts?: { min?: number }): number | undefined {
+  if (raw == null) return undefined;
+  if (!/^-?\d+$/.test(raw)) {
+    throw new Error(`${name} must be an integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${name} must be an integer`);
+  }
+  if (opts?.min != null && value < opts.min) {
+    throw new Error(`${name} must be >= ${opts.min}`);
+  }
+  return value;
+}
+
+function parseCsvParam(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined;
+  const values = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return values.length > 0 ? values : undefined;
+}
+
+function errorStatus(error: unknown): number {
+  const message = error instanceof Error ? error.message : '';
+  if (
+    message.includes('must be') ||
+    message.includes('window and windowMs') ||
+    message.includes('Missing required')
+  ) {
+    return 400;
+  }
+  return 500;
+}
+
+function getLiveConnection(registry: QueueRegistry, feature: string) {
+  const connection = registry.getConnection();
+  if (!connection) {
+    throw new Error(`Connection config required for ${feature}`);
+  }
+  return connection;
+}
+
+function ensureBroadcastAccess(name: string, allowedQueues?: string[]): string | null {
+  if (!VALID_QUEUE_NAME.test(name)) {
+    return 'Invalid queue name';
+  }
+  if (allowedQueues && !allowedQueues.includes(name)) {
+    return 'Queue not found or not accessible';
+  }
+  return null;
+}
+
+function removeBroadcastClient(
+  shared: SharedBroadcastStream,
+  client: BroadcastClient,
+  endResponse = false,
+): void {
+  if (!shared.clients.delete(client)) return;
+  if (shared.clients.size === 0) {
+    void shared.close();
+  }
+  if (endResponse) {
+    void client.stream.writeSSE({ event: 'close', data: JSON.stringify({ ok: true }) }).catch(() => {});
+  }
+}
+
+async function getSharedBroadcastStream(
+  registry: QueueRegistry,
+  name: string,
+  subscription: string,
+): Promise<SharedBroadcastStream> {
+  const connection = getLiveConnection(registry, 'broadcast SSE');
+  const prefix = registry.getPrefix();
+  const cacheKey = `${prefix ?? ''}\u0000${name}\u0000${subscription}`;
+  const cached = broadcastStreams.get(cacheKey);
+  if (cached) {
+    await cached.ready;
+    return cached;
+  }
+
+  const { BroadcastWorker } = require('glide-mq') as typeof import('glide-mq');
+  const clients = new Set<BroadcastClient>();
+
+  const shared: SharedBroadcastStream = {
+    clients,
+    closing: false,
+    ready: Promise.resolve(),
+    worker: null as unknown as { close: () => Promise<void> },
+    close: async () => {
+      if (shared.closing) return;
+      shared.closing = true;
+      broadcastStreams.delete(cacheKey);
+      clients.clear();
+      await shared.worker.close();
+    },
+  };
+
+  const worker = new BroadcastWorker(
+    name,
+    async (job) => {
+      const payload = {
+        data: job.data,
+        id: job.id,
+        subject: job.name,
+        timestamp: job.timestamp,
+      };
+      for (const client of Array.from(shared.clients)) {
+        if (client.matcher && !client.matcher(job.name)) continue;
+        client.stream
+          .writeSSE({
+            event: 'message',
+            data: JSON.stringify(payload),
+            id: job.id,
+          })
+          .catch(() => {
+            removeBroadcastClient(shared, client);
+          });
+      }
+    },
+    {
+      blockTimeout: 5_000,
+      connection,
+      prefix,
+      subscription,
+    },
+  );
+
+  shared.worker = worker;
+  shared.ready = worker.waitUntilReady();
+  broadcastStreams.set(cacheKey, shared);
+
+  try {
+    await shared.ready;
+    return shared;
+  } catch (error) {
+    broadcastStreams.delete(cacheKey);
+    await worker.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**
@@ -54,8 +217,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   });
 
   // Guard: ensure queue name is valid, exists, and is allowed
-  const VALID_QUEUE_NAME = /^[a-zA-Z0-9_-]{1,128}$/;
-
   const guardQueue = async (c: Context<GlideMQEnv>, next: () => Promise<void>) => {
     const name = c.req.param('name')!;
 
@@ -111,9 +272,6 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     return c.json({ id: jobId }, 201);
   });
 
-  api.use('/:name/*', guardQueue);
-  api.use('/:name', guardQueue);
-
   // Zod validation hook: return 400 with flat error on failure
   const onValidationError = (
     result: { success: boolean; error?: { issues: Array<{ path: (string | number)[]; message: string }> } },
@@ -124,6 +282,138 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       return c.json({ error: 'Validation failed', details: issues }, 400);
     }
   };
+
+  api.get('/usage/summary', async (c) => {
+    try {
+      const registry = getRegistry(c);
+      const requestedQueues = parseCsvParam(c.req.query('queues'));
+      if (requestedQueues) {
+        for (const queueName of requestedQueues) {
+          if (!VALID_QUEUE_NAME.test(queueName)) {
+            return c.json({ error: 'Invalid queue name' }, 400);
+          }
+          if (allowedQueues && !allowedQueues.includes(queueName)) {
+            return c.json({ error: 'Queue not found or not accessible' }, 404);
+          }
+        }
+      }
+
+      const connection = getLiveConnection(registry, 'usage summary');
+      const { Queue } = require('glide-mq') as typeof import('glide-mq');
+      const startTime = parseIntegerParam(c.req.query('start'), 'start', { min: 0 });
+      const endTime = parseIntegerParam(c.req.query('end'), 'end', { min: 0 });
+      const window = c.req.query('window');
+      const windowMs = c.req.query('windowMs');
+
+      if (window && windowMs && window !== windowMs) {
+        return c.json({ error: 'window and windowMs must match when both are provided' }, 400);
+      }
+
+      const summary = await Queue.getUsageSummary({
+        connection,
+        endTime,
+        prefix: registry.getPrefix(),
+        queues: requestedQueues ?? allowedQueues,
+        startTime,
+        windowMs: parseIntegerParam(windowMs ?? window, windowMs ? 'windowMs' : 'window', { min: 1 }),
+      });
+
+      return c.json(summary);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Internal server error';
+      return c.json({ error: message }, errorStatus(error));
+    }
+  });
+
+  api.post('/broadcast/:name', async (c) => {
+    const name = c.req.param('name')!;
+    const accessError = ensureBroadcastAccess(name, allowedQueues);
+    if (accessError) {
+      return c.json({ error: accessError }, accessError === 'Invalid queue name' ? 400 : 404);
+    }
+
+    try {
+      const registry = getRegistry(c);
+      const body = await c.req.json<{ data?: unknown; opts?: Record<string, unknown>; subject?: unknown }>();
+
+      if (typeof body?.subject !== 'string' || body.subject.trim() === '') {
+        return c.json({ error: 'Validation failed', details: ['subject: Required'] }, 400);
+      }
+
+      const connection = getLiveConnection(registry, 'broadcast publish');
+      const { Broadcast } = require('glide-mq') as typeof import('glide-mq');
+      const broadcast = new Broadcast(name, {
+        connection,
+        prefix: registry.getPrefix(),
+      });
+
+      try {
+        const rawOpts = body.opts ?? {};
+        const safeOpts: Record<string, unknown> = {};
+        for (const key of ALLOWED_JOB_OPTS) {
+          if (key in rawOpts) safeOpts[key] = rawOpts[key];
+        }
+
+        const id = await broadcast.publish(body.subject, body.data ?? null, safeOpts as any);
+        return c.json(id ? { id, subject: body.subject } : { skipped: true }, id ? 201 : 200);
+      } finally {
+        await broadcast.close().catch(() => undefined);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Internal server error';
+      return c.json({ error: message }, errorStatus(error));
+    }
+  });
+
+  api.get('/broadcast/:name/events', (c) => {
+    const name = c.req.param('name')!;
+    const accessError = ensureBroadcastAccess(name, allowedQueues);
+    if (accessError) {
+      return c.json({ error: accessError }, accessError === 'Invalid queue name' ? 400 : 404);
+    }
+
+    const subscription = c.req.query('subscription');
+    if (!subscription) {
+      return c.json({ error: 'Missing required query param: subscription' }, 400);
+    }
+
+    const registry = getRegistry(c);
+    if (!registry.getConnection()) {
+      return c.json({ error: 'Connection config required for broadcast SSE' }, 500);
+    }
+
+    const { compileSubjectMatcher } = require('glide-mq') as typeof import('glide-mq');
+    const matcher = compileSubjectMatcher(parseCsvParam(c.req.query('subjects')));
+
+    return streamSSE(c, async (stream) => {
+      const shared = await getSharedBroadcastStream(registry, name, subscription);
+      const client: BroadcastClient = {
+        matcher,
+        stream,
+      };
+      let running = true;
+
+      shared.clients.add(client);
+      stream.onAbort(() => {
+        running = false;
+      });
+
+      try {
+        while (running) {
+          await stream.writeSSE({
+            event: 'heartbeat',
+            data: JSON.stringify({ time: Date.now() }),
+          });
+          await stream.sleep(SSE_HEARTBEAT_MS);
+        }
+      } finally {
+        removeBroadcastClient(shared, client);
+      }
+    });
+  });
+
+  api.use('/:name/*', guardQueue);
+  api.use('/:name', guardQueue);
 
   if (schemas && zv) {
     api.post('/:name/jobs', zv('json', schemas.addJobSchema, onValidationError), async (c) => {

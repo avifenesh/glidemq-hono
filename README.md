@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@glidemq/hono)](https://www.npmjs.com/package/@glidemq/hono)
 [![license](https://img.shields.io/npm/l/@glidemq/hono)](https://github.com/avifenesh/glidemq-hono/blob/main/LICENSE)
 
-Hono middleware that turns [glide-mq](https://github.com/avifenesh/glide-mq) queues into a REST API with real-time SSE and type-safe RPC - one middleware, one router, 24 endpoints. Built for both traditional job queues and AI agent orchestration.
+Hono middleware that turns [glide-mq](https://github.com/avifenesh/glide-mq) queues into a REST API with real-time SSE and type-safe RPC. One middleware + one router gives you queue operations, schedulers, queue events, rolling usage summaries, and broadcast routes.
 
 ## Why
 
@@ -48,7 +48,7 @@ app.route("/api/queues", glideMQApi());
 export default app;
 ```
 
-`glideMQ()` injects a registry into `c.var.glideMQ`. `glideMQApi()` returns a typed sub-router with 24 endpoints.
+`glideMQ()` injects a registry into `c.var.glideMQ`. `glideMQApi()` returns a typed sub-router that exposes the full queue-management HTTP surface.
 
 ## Type-safe RPC client
 
@@ -71,6 +71,9 @@ glide-mq is an AI-native message queue. This middleware exposes AI orchestration
 - **`GET /:name/flows/:id/usage`** - aggregated token/cost usage across all jobs in a flow
 - **`GET /:name/flows/:id/budget`** - budget state (limits, spent, exceeded) for a flow
 - **`GET /:name/jobs/:id/stream`** - SSE stream of real-time chunks from a streaming job
+- **`GET /usage/summary`** - rolling per-queue or cross-queue usage summary from persisted minute buckets
+- **`POST /broadcast/:name`** - publish a broadcast message with a `subject`, payload, and optional job options
+- **`GET /broadcast/:name/events`** - SSE stream for broadcast delivery; requires `subscription` and optionally filters `subjects`
 
 Jobs returned from all endpoints include AI fields when present: `usage`, `signals`, `budgetKey`, `fallbackIndex`, `tpmTokens`. SSE events include `usage`, `suspended`, and `budget-exceeded` event types.
 
@@ -78,7 +81,7 @@ See the [glide-mq docs](https://github.com/avifenesh/glide-mq) for the full AI p
 
 ## Configuration
 
-`GlideMQConfig` accepts `connection`, `queues`, `producers`, `prefix` (default `"glide"`), and `testing` (boolean). Restrict exposed queues via `glideMQApi({ queues: ["emails"], producers: ["emails"] })`.
+`GlideMQConfig` accepts `connection`, `queues`, `producers`, `prefix` (default `"glide"`), and `testing` (boolean). Restrict exposed queue and broadcast names via `glideMQApi({ queues: ["emails"], producers: ["emails"] })`.
 
 ## Testing
 
@@ -100,12 +103,13 @@ await registry.closeAll();
 
 - Graceful shutdown is manual - call `registry.closeAll()` (Hono has no lifecycle hooks).
 - SSE requires a long-lived connection; edge runtimes with short execution limits may not support it.
+- `GET /usage/summary` and broadcast routes require a live `connection`; they are unavailable in testing mode.
 - Producers not available in testing mode. Queue names must match `/^[a-zA-Z0-9_-]{1,128}$/`.
 
 ## Links
 
 - [glide-mq](https://github.com/avifenesh/glide-mq) - core library
-- [Full documentation](https://avifenesh.github.io/glidemq.dev/integrations/hono)
+- [Full documentation](https://glidemq.dev/integrations/hono)
 - [Issues](https://github.com/avifenesh/glidemq-hono/issues)
 - [@glidemq/fastify](https://github.com/avifenesh/glidemq-fastify) | [@glidemq/hapi](https://github.com/avifenesh/glidemq-hapi) | [@glidemq/nestjs](https://github.com/avifenesh/glidemq-nestjs) | [@glidemq/dashboard](https://github.com/avifenesh/glidemq-dashboard)
 
