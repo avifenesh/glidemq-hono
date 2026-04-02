@@ -378,6 +378,42 @@ describe('glideMQApi', () => {
     });
   });
 
+  describe('flow HTTP endpoints', () => {
+    it('returns 400 when body does not include exactly one of flow or dag', async () => {
+      const { app } = setup();
+      const res = await app.request('/flows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('exactly one of');
+    });
+
+    it('returns 500 in testing mode when flow creation is attempted', async () => {
+      const { app } = setup();
+      const res = await app.request('/flows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flow: { name: 'root', queueName: 'emails', data: {}, children: [] },
+        }),
+      });
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain('Connection config required');
+    });
+
+    it('returns 500 in testing mode when reading a flow snapshot', async () => {
+      const { app } = setup();
+      const res = await app.request('/flows/test-flow');
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain('Connection config required');
+    });
+  });
+
   describe('POST /broadcast/:name', () => {
     it('returns 400 when subject is missing', async () => {
       const { app } = setup();

@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@glidemq/hono)](https://www.npmjs.com/package/@glidemq/hono)
 [![license](https://img.shields.io/npm/l/@glidemq/hono)](https://github.com/avifenesh/glidemq-hono/blob/main/LICENSE)
 
-Hono middleware that turns [glide-mq](https://github.com/avifenesh/glide-mq) queues into a REST API with real-time SSE and type-safe RPC. One middleware + one router gives you queue operations, schedulers, queue events, rolling usage summaries, and broadcast routes.
+Hono middleware that turns [glide-mq](https://github.com/avifenesh/glide-mq) queues into a REST API with real-time SSE and type-safe RPC. One middleware + one router gives you queue operations, schedulers, flow orchestration over HTTP, rolling usage summaries, and broadcast routes.
 
 ## Why
 
@@ -70,12 +70,17 @@ glide-mq is an AI-native message queue. This middleware exposes AI orchestration
 
 - **`GET /:name/flows/:id/usage`** - aggregated token/cost usage across all jobs in a flow
 - **`GET /:name/flows/:id/budget`** - budget state (limits, spent, exceeded) for a flow
+- **`POST /flows`** - create a tree flow or DAG over HTTP with `{ flow, budget? }` or `{ dag }`
+- **`GET /flows/:id`** - inspect a flow snapshot with nodes, roots, counts, usage, and budget
+- **`GET /flows/:id/tree`** - inspect the nested tree view for a submitted tree flow or DAG
+- **`DELETE /flows/:id`** - revoke or flag remaining jobs in a flow and delete the HTTP flow record
 - **`GET /:name/jobs/:id/stream`** - SSE stream of real-time chunks from a streaming job
 - **`GET /usage/summary`** - rolling per-queue or cross-queue usage summary from persisted minute buckets
 - **`POST /broadcast/:name`** - publish a broadcast message with a `subject`, payload, and optional job options
 - **`GET /broadcast/:name/events`** - SSE stream for broadcast delivery; requires `subscription` and optionally filters `subjects`
 
 Jobs returned from all endpoints include AI fields when present: `usage`, `signals`, `budgetKey`, `fallbackIndex`, `tpmTokens`. SSE events include `usage`, `suspended`, and `budget-exceeded` event types.
+HTTP-submitted budgets are currently supported for tree flows only, not DAG payloads.
 
 See the [glide-mq docs](https://github.com/avifenesh/glide-mq) for the full AI primitives API.
 
@@ -103,7 +108,7 @@ await registry.closeAll();
 
 - Graceful shutdown is manual - call `registry.closeAll()` (Hono has no lifecycle hooks).
 - SSE requires a long-lived connection; edge runtimes with short execution limits may not support it.
-- `GET /usage/summary` and broadcast routes require a live `connection`; they are unavailable in testing mode.
+- `/flows*`, `GET /usage/summary`, and broadcast routes require a live `connection`; they are unavailable in testing mode.
 - Producers not available in testing mode. Queue names must match `/^[a-zA-Z0-9_-]{1,128}$/`.
 
 ## Links
