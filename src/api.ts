@@ -78,6 +78,28 @@ type FlowTreeNode = FlowNodeSummary & {
   children: FlowTreeNode[];
 };
 
+type FlowHashEntry = {
+  field?: unknown;
+  key?: unknown;
+  value?: unknown;
+};
+
+type FlowHashData = FlowHashEntry[] | Record<string, unknown> | null | undefined;
+
+type FlowQueueAdapter = {
+  getClient?: () => Promise<any>;
+  getFlowBudget: (id: string) => Promise<unknown>;
+  getFlowUsage: (id: string) => Promise<unknown>;
+  keys: { job: (id: string) => string };
+  revoke: (id: string) => Promise<string>;
+};
+
+type FlowJobAdapter = {
+  getState: () => Promise<string>;
+  parentIds?: string[];
+  parentQueues?: string[];
+};
+
 const broadcastStreams = new Map<string, SharedBroadcastStream>();
 
 function flowMetaKey(flowId: string, prefix?: string): string {
@@ -102,8 +124,28 @@ function decodeFlowJobRef(raw: string): FlowJobRef | null {
   return { queueName: raw.slice(0, separator), jobId: raw.slice(separator + 1) };
 }
 
-function hashEntriesToRecord(hashData: any): Record<string, string> | null {
-  if (!Array.isArray(hashData) || hashData.length === 0) return null;
+function asFlowQueue(queue: unknown): FlowQueueAdapter {
+  return queue as FlowQueueAdapter;
+}
+
+function asFlowJob(job: unknown): FlowJobAdapter {
+  return job as FlowJobAdapter;
+}
+
+function hashEntriesToRecord(hashData: FlowHashData): Record<string, string> | null {
+  if (!hashData) return null;
+
+  if (!Array.isArray(hashData)) {
+    const entries = Object.entries(hashData);
+    if (entries.length === 0) return null;
+    const record: Record<string, string> = Object.create(null);
+    for (const [key, value] of entries) {
+      record[key] = String(value);
+    }
+    return record;
+  }
+
+  if (hashData.length === 0) return null;
   const record: Record<string, string> = Object.create(null);
   for (const entry of hashData) {
     const key = entry?.field ?? entry?.key;
@@ -267,11 +309,7 @@ function ensureBroadcastAccess(name: string, allowedQueues?: string[]): string |
   return null;
 }
 
-function removeBroadcastClient(
-  shared: SharedBroadcastStream,
-  client: BroadcastClient,
-  endResponse = false,
-): void {
+function removeBroadcastClient(shared: SharedBroadcastStream, client: BroadcastClient, endResponse = false): void {
   if (!shared.clients.delete(client)) return;
   if (shared.clients.size === 0) {
     void shared.close();
@@ -459,10 +497,13 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
           .sort((a, b) => a.queueName.localeCompare(b.queueName) || a.jobId.localeCompare(b.jobId))
           .map(encodeFlowJobRef),
       );
-      for (const ref of jobs) {
-        const { queue } = registry.get(ref.queueName);
-        await client.hset((queue as any).keys.job(ref.jobId), { flowId });
-      }
+      await Promise.all(
+        jobs.map(async (ref) => {
+          const { queue } = registry.get(ref.queueName);
+          const flowQueue = asFlowQueue(queue);
+          await client.hset(flowQueue.keys.job(ref.jobId), { flowId });
+        }),
+      );
     }
 
     if (roots.length > 0) {
@@ -509,25 +550,40 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
   async function buildFlowSnapshot(registry: QueueRegistry, flowId: string) {
     const record = await loadFlowRecord(registry, flowId);
     if (!record) return null;
-    assertAllowedFlowQueues(registry, record.jobs.map((job) => job.queueName));
+    assertAllowedFlowQueues(
+      registry,
+      record.jobs.map((job) => job.queueName),
+    );
 
     const nodes: FlowNodeSummary[] = [];
     const counts: Record<string, number> = Object.create(null);
 
-    for (const ref of record.jobs) {
-      const { queue } = registry.get(ref.queueName);
-      const job = await queue.getJob(ref.jobId);
-      if (!job) continue;
-      const state = await (job as any).getState();
-      counts[state] = (counts[state] || 0) + 1;
-      nodes.push({
-        ...serializeJob(job),
-        flowId,
-        parentIds: (job as any).parentIds,
-        parentQueues: (job as any).parentQueues,
-        queueName: ref.queueName,
-        state,
-      });
+    const nodeResults = await Promise.all(
+      record.jobs.map(async (ref) => {
+        const { queue } = registry.get(ref.queueName);
+        const job = await queue.getJob(ref.jobId);
+        if (!job) return null;
+
+        const flowJob = asFlowJob(job);
+        const state = await flowJob.getState();
+        return {
+          node: {
+            ...serializeJob(job),
+            flowId,
+            parentIds: flowJob.parentIds,
+            parentQueues: flowJob.parentQueues,
+            queueName: ref.queueName,
+            state,
+          },
+          state,
+        };
+      }),
+    );
+
+    for (const result of nodeResults) {
+      if (!result) continue;
+      counts[result.state] = (counts[result.state] || 0) + 1;
+      nodes.push(result.node);
     }
 
     let usage: unknown = null;
@@ -535,13 +591,14 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
     if (record.roots.length === 1) {
       const root = record.roots[0];
       const { queue } = registry.get(root.queueName);
+      const flowQueue = asFlowQueue(queue);
       try {
-        usage = await (queue as any).getFlowUsage(root.jobId);
+        usage = await flowQueue.getFlowUsage(root.jobId);
       } catch {
         usage = null;
       }
       try {
-        budget = await (queue as any).getFlowBudget(root.jobId);
+        budget = await flowQueue.getFlowBudget(root.jobId);
       } catch {
         budget = null;
       }
@@ -553,8 +610,12 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       createdAt: record.createdAt,
       flowId,
       kind: record.kind,
-      nodes: nodes.sort((a, b) => a.timestamp - b.timestamp || a.queueName.localeCompare(b.queueName) || a.id.localeCompare(b.id)),
-      roots: record.roots.slice().sort((a, b) => a.queueName.localeCompare(b.queueName) || a.jobId.localeCompare(b.jobId)),
+      nodes: nodes.sort(
+        (a, b) => a.timestamp - b.timestamp || a.queueName.localeCompare(b.queueName) || a.id.localeCompare(b.id),
+      ),
+      roots: record.roots
+        .slice()
+        .sort((a, b) => a.queueName.localeCompare(b.queueName) || a.jobId.localeCompare(b.jobId)),
       tree: buildFlowTreeNodes(flowId, record.roots, nodes),
       usage,
     };
@@ -759,34 +820,41 @@ export function glideMQApi(opts?: GlideMQApiConfig) {
       if (!record) {
         return c.json({ error: 'Flow not found' }, 404);
       }
-      assertAllowedFlowQueues(registry, record.jobs.map((job) => job.queueName));
+      assertAllowedFlowQueues(
+        registry,
+        record.jobs.map((job) => job.queueName),
+      );
 
       let revoked = 0;
       let flagged = 0;
       let skipped = 0;
       const jobs: Array<{ id: string; queueName: string; state?: string; status: string }> = [];
 
-      for (const ref of record.jobs) {
-        const { queue } = registry.get(ref.queueName);
-        const job = await queue.getJob(ref.jobId);
-        if (!job) {
-          skipped += 1;
-          jobs.push({ id: ref.jobId, queueName: ref.queueName, status: 'missing' });
-          continue;
-        }
+      const results = await Promise.all(
+        record.jobs.map(async (ref) => {
+          const { queue } = registry.get(ref.queueName);
+          const job = await queue.getJob(ref.jobId);
+          if (!job) {
+            return { id: ref.jobId, queueName: ref.queueName, status: 'missing' as const };
+          }
 
-        const state = await (job as any).getState();
-        if (state === 'completed' || state === 'failed') {
-          skipped += 1;
-          jobs.push({ id: ref.jobId, queueName: ref.queueName, state, status: 'skipped' });
-          continue;
-        }
+          const flowJob = asFlowJob(job);
+          const state = await flowJob.getState();
+          if (state === 'completed' || state === 'failed') {
+            return { id: ref.jobId, queueName: ref.queueName, state, status: 'skipped' as const };
+          }
 
-        const status = await (queue as any).revoke(ref.jobId);
-        if (status === 'revoked') revoked += 1;
-        else if (status === 'flagged') flagged += 1;
+          const flowQueue = asFlowQueue(queue);
+          const status = await flowQueue.revoke(ref.jobId);
+          return { id: ref.jobId, queueName: ref.queueName, state, status };
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status === 'revoked') revoked += 1;
+        else if (result.status === 'flagged') flagged += 1;
         else skipped += 1;
-        jobs.push({ id: ref.jobId, queueName: ref.queueName, state, status });
+        jobs.push(result);
       }
 
       await deleteFlowRecord(registry, flowId);
