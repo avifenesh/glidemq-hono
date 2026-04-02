@@ -6,6 +6,16 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., 0.4.0)"
+        required: true
+      publish:
+        description: "Publish to NPM"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   quality:
@@ -86,7 +96,7 @@ jobs:
         run: npx vitest run tests/integration.test.ts
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [quality, test-unit, test-no-zod, test-integration]
     runs-on: ubuntu-latest
     permissions:
@@ -102,15 +112,27 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Verify tag matches package version
+      - name: Set version
         run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-            echo "Tag v$TAG_VERSION does not match package.json version $PKG_VERSION"
-            exit 1
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
           fi
+          CURRENT=$(node -p "require('./package.json').version")
+          if [ "$CURRENT" != "$VERSION" ]; then
+            npm version $VERSION --no-git-tag-version
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - run: npm publish --access public --ignore-scripts
+      - name: Publish
+        if: github.event_name == 'push' || github.event.inputs.publish == 'true'
+        run: npm publish --access public --ignore-scripts --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify
+        if: github.event_name == 'push' || github.event.inputs.publish == 'true'
+        run: |
+          sleep 10
+          npm view @glidemq/hono@${{ env.VERSION }} version
