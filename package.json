@@ -72,7 +72,7 @@
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.1.8",
-    "glide-mq": "^0.14.0",
+    "glide-mq": "^0.15.0",
     "hono": "^4.7.0",
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
