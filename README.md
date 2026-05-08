@@ -19,7 +19,7 @@ npm install @glidemq/hono glide-mq hono
 
 Optional - install `zod` and `@hono/zod-validator` for request validation.
 
-Requires **glide-mq >= 0.14.0** and **Hono 4+**.
+Requires **glide-mq >= 0.15.2** and **Hono 4+**.
 
 ## Quick start
 
