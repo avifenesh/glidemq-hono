@@ -86,6 +86,22 @@ describe('glideMQApi', () => {
   });
 
   describe('GET /:name/jobs', () => {
+    it.each(['/reports/jobs#?type=forged', '/reports/jobs#?start=not-a-number'])(
+      'ignores query parameters inside the URL fragment: %s',
+      async (url) => {
+        const { app } = setup();
+        const res = await app.request(url);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual([]);
+      },
+    );
+
+    it('still validates parameters in the actual query string', async () => {
+      const { app } = setup();
+      const res = await app.request('/reports/jobs?type=forged');
+      expect(res.status).toBe(400);
+    });
+
     it('lists jobs', async () => {
       const { app } = setup();
 
