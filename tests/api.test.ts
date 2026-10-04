@@ -15,7 +15,7 @@ function buildRestrictedApp(allowedQueues: string[]) {
     c.set('glideMQ', registry);
     await next();
   });
-  app.route('/', glideMQApi({ queues: allowedQueues }));
+  app.route('/', glideMQApi({ authorize: () => true, queues: allowedQueues }));
   return { app, registry };
 }
 
@@ -537,7 +537,7 @@ describe('glideMQApi with restricted queues', () => {
 describe('glideMQApi without middleware', () => {
   it('throws when registry is not set', async () => {
     const app = new Hono();
-    app.route('/', glideMQApi());
+    app.route('/', glideMQApi({ authorize: () => true }));
 
     const res = await app.request('/emails/jobs');
     expect(res.status).toBe(500);
@@ -547,7 +547,7 @@ describe('glideMQApi without middleware', () => {
 describe('glideMQApi error handler', () => {
   it('returns generic 500 without leaking internal details', async () => {
     const app = new Hono();
-    app.route('/', glideMQApi());
+    app.route('/', glideMQApi({ authorize: () => true }));
 
     // Trigger error by calling without middleware (no registry set)
     const res = await app.request('/emails/counts');

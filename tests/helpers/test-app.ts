@@ -16,7 +16,7 @@ export function buildTestApp(queues: Record<string, QueueConfig> = { default: {}
     await next();
   });
 
-  app.route('/', glideMQApi());
+  app.route('/', glideMQApi({ authorize: () => true }));
 
   return { app, registry };
 }

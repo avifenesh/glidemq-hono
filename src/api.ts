@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import type { Context } from 'hono';
+import type { Context, Env } from 'hono';
 import type { GlideMQEnv, GlideMQApiConfig, QueueRegistry } from './types';
 import { serializeJob, serializeJobs } from './serializers';
 import { buildSchemas, getZValidator, hasZod } from './schemas';
@@ -401,16 +401,29 @@ async function getSharedBroadcastStream(
  * ```ts
  * const app = new Hono();
  * app.use(glideMQ({ ... }));
- * app.route('/api/queues', glideMQApi());
+ * app.route('/api/queues', glideMQApi({ authorize: (c) => canManageQueues(c) }));
  * ```
  */
-export function glideMQApi(opts?: GlideMQApiConfig) {
+export function glideMQApi<E extends Env = GlideMQEnv>(opts?: GlideMQApiConfig<E>) {
   const allowedQueues = opts?.queues;
   const allowedProducers = opts?.producers;
   const schemas = hasZod() ? buildSchemas() : null;
   const zv = getZValidator();
 
   const api = new Hono<GlideMQEnv>();
+
+  api.use('*', async (c, next) => {
+    let authorized = false;
+    try {
+      authorized =
+        typeof opts?.authorize === 'function' &&
+        (await opts.authorize(c as unknown as Context<E & GlideMQEnv>)) === true;
+    } catch {
+      // Authorization failures must not reach route handlers or reveal internal details.
+    }
+    if (!authorized) return c.json({ error: 'Forbidden' }, 403);
+    await next();
+  });
 
   api.onError((err, c) => {
     return c.json({ error: 'Internal server error' }, 500);

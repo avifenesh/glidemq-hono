@@ -1,4 +1,5 @@
 import type { Queue, Worker, Job, Producer, ConnectionOptions, Serializer } from 'glide-mq';
+import type { Context, Env } from 'hono';
 
 // --- Config ---
 
@@ -65,7 +66,9 @@ export interface QueueRegistry {
 
 // --- API Config ---
 
-export interface GlideMQApiConfig {
+export interface GlideMQApiConfig<E extends Env = GlideMQEnv> {
+  /** Authorize each request before parsing or accessing queues. Only true grants access. */
+  authorize: (context: Context<E & GlideMQEnv>) => boolean | Promise<boolean>;
   /** Restrict API to specific queue names. Default: all configured queues. */
   queues?: string[];
   /** Restrict produce API to specific producer names. Default: all configured producers. */

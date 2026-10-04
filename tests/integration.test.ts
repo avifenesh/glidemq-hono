@@ -47,7 +47,7 @@ describe.skipIf(!canConnect)('Integration (requires Valkey)', () => {
       c.set('glideMQ', registry);
       await next();
     });
-    app.route('/', glideMQApi());
+    app.route('/', glideMQApi({ authorize: () => true }));
   });
 
   afterAll(async () => {

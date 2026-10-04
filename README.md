@@ -25,9 +25,12 @@ Requires **glide-mq >= 0.15.2** and **Hono >= 4.13.5**.
 
 ```ts
 import { Hono } from "hono";
-import { glideMQ, glideMQApi } from "@glidemq/hono";
+import { glideMQ, glideMQApi, type GlideMQEnv } from "@glidemq/hono";
 
-const app = new Hono();
+// Authenticate requests with your application's middleware before mounting the API.
+type AppEnv = GlideMQEnv & { Variables: { canManageQueues: boolean } };
+const app = new Hono<AppEnv>();
+app.use(authenticateSession); // Sets canManageQueues from a verified session.
 
 app.use(
   glideMQ({
@@ -44,11 +47,15 @@ app.use(
   }),
 );
 
-app.route("/api/queues", glideMQApi());
+app.route("/api/queues", glideMQApi<AppEnv>({
+  authorize: (c) => c.get("canManageQueues") === true,
+}));
 export default app;
 ```
 
-`glideMQ()` injects a registry into `c.var.glideMQ`. `glideMQApi()` returns a typed sub-router that exposes the full queue-management HTTP surface.
+`glideMQ()` injects a registry into `c.var.glideMQ`. `glideMQApi()` returns a sub-router that exposes the full queue-management HTTP surface. Its `authorize` callback runs for every request before route validation, body parsing, queue access, or SSE subscriptions. Only a literal `true` grants access. A missing callback, any other result, or a thrown/rejected error returns `403 { "error": "Forbidden" }`.
+
+The callback receives Hono's context and may be synchronous or asynchronous. Use authenticated session or middleware state to decide whether the caller may manage queues. Queue and producer name filters further restrict an authorized request. They do not grant access by themselves.
 
 ## Type-safe RPC client
 
@@ -56,7 +63,9 @@ export default app;
 import { hc } from "hono/client";
 import type { GlideMQApiType } from "@glidemq/hono";
 
-const client = hc<GlideMQApiType>("http://localhost:3000/api/queues");
+const client = hc<GlideMQApiType>("http://localhost:3000/api/queues", {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
 const res = await client[":name"].jobs.$post({
   param: { name: "emails" },
   json: { name: "welcome", data: { to: "user@example.com" } },
@@ -86,7 +95,13 @@ See the [glide-mq docs](https://github.com/avifenesh/glide-mq) for the full AI p
 
 ## Configuration
 
-`GlideMQConfig` accepts `connection`, `queues`, `producers`, `prefix` (default `"glide"`), and `testing` (boolean). Restrict exposed queue and broadcast names via `glideMQApi({ queues: ["emails"], producers: ["emails"] })`.
+`GlideMQConfig` accepts `connection`, `queues`, `producers`, `prefix` (default `"glide"`), and `testing` (boolean). `GlideMQApiConfig` requires `authorize`. Restrict exposed names with `glideMQApi({ authorize: canManageQueues, queues: ["emails"], producers: ["emails"] })`.
+
+## Migrating to 0.5.0
+
+Pass an `authorize` callback when mounting `glideMQApi`. Existing calls without it return 403 for every request, including unknown paths and HTTP methods. Install your authentication middleware before mounting the router and return `true` only for callers allowed to manage queues. Keep the callback scoped to the API's management permissions.
+
+If mounting the exported low-level `createEventsRoute()` handler separately, apply your application's authorization middleware to that route as well.
 
 ## Testing
 
@@ -103,6 +118,8 @@ const res = await app.request("/emails/jobs", {
 });
 await registry.closeAll();
 ```
+
+`createTestApp` explicitly authorizes its in-memory fixture requests. It does not exercise your application's authentication. To test authorization, mount `glideMQApi({ authorize })` in your own Hono app with a testing-mode registry; testing mode alone never enables access.
 
 ## Limitations
 

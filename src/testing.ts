@@ -6,6 +6,7 @@ import { glideMQApi } from './api';
 /**
  * Create a fully wired Hono app in testing mode.
  * Uses TestQueue/TestWorker from glide-mq/testing - no Valkey needed.
+ * Explicitly authorizes all requests for this in-memory test fixture only.
  *
  * @example
  * ```ts
@@ -35,7 +36,7 @@ export function createTestApp(queues: Record<string, QueueConfig>): {
     await next();
   });
 
-  app.route('/', glideMQApi());
+  app.route('/', glideMQApi({ authorize: () => true }));
 
   return { app, registry };
 }
