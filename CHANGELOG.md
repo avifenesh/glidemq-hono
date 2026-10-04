@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Require an explicit `authorize` callback for the management API. Only `true` grants access; missing callbacks, other results, and callback errors return 403 before request parsing or backend access.
+- Apply authorization to all mounted API paths and methods, including queue, producer, scheduler, flow, usage, broadcast, and SSE routes.
+- Accept typed Hono middleware context in authorization callbacks. The in-memory `createTestApp` helper explicitly authorizes fixture requests.
+- Migration: pass `glideMQApi({ authorize: (c) => canManageQueues(c) })` after your application's authentication middleware.
+
 ## 0.4.0
 
 - Expand the HTTP surface to track glide-mq 0.15.0: queue-wide events SSE, per-job lifecycle SSE, `jobs/wait`, workers, metrics, scheduler CRUD, usage summary, broadcast publish/SSE, DLQ inspection/replay, suspended-job inspection, revoke, and queue global rate-limit management.
