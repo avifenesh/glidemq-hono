@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
 
       - name: Publisher regression checks
-        run: node --test scripts/npm-release.test.mjs
+        run: node --test scripts/npm-release-checks.mjs
 
       - name: Typecheck
         run: npx tsc --noEmit
