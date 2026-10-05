@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Validate the adapter against glide-mq 0.17.0 and refresh its development lockfile.
+- Preserve the explicit authorization callback and the supported glide-mq peer range.
+
 ## 0.5.0
 
 - Require an explicit `authorize` callback for the management API. Only `true` grants access; missing callbacks, other results, and callback errors return 403 before request parsing or backend access.
