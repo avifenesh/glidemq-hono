@@ -660,11 +660,11 @@ export function glideMQApi<E extends Env = GlideMQEnv>(opts?: GlideMQApiConfig<E
 
   // Zod validation hook: return 400 with flat error on failure
   const onValidationError = (
-    result: { success: boolean; error?: { issues: Array<{ path: (string | number)[]; message: string }> } },
+    result: { success: boolean; error?: { issues: Array<{ path: PropertyKey[]; message: string }> } },
     c: Context,
   ) => {
     if (!result.success) {
-      const issues = result.error!.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+      const issues = result.error!.issues.map((i) => `${i.path.map(String).join('.')}: ${i.message}`);
       return c.json({ error: 'Validation failed', details: issues }, 400);
     }
   };

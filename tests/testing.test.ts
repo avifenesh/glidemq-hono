@@ -65,4 +65,18 @@ describe('createTestApp', () => {
     const res = await app.request('/unknown/counts');
     expect(res.status).toBe(404);
   });
+  it('exposes GlideMQ 0.20 bounded scheduler inventories', async () => {
+    const { app, registry } = createTestApp({ inventory: {} });
+    cleanup = () => registry.closeAll();
+    const { queue } = registry.get('inventory');
+    await queue.upsertJobScheduler('one', { every: 60_000 });
+    await queue.upsertJobScheduler('two', { every: 120_000 });
+    expect(await queue.getRepeatableJobsBounded(2)).toHaveLength(2);
+    await expect(queue.getRepeatableJobsBounded(1)).rejects.toThrow();
+    await expect(queue.getRepeatableJobsBounded(0)).rejects.toThrow();
+    expect(await queue.getRepeatableJobs()).toHaveLength(2);
+    const res = await app.request('/inventory/schedulers');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toHaveLength(2);
+  });
 });

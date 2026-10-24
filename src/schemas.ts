@@ -124,7 +124,7 @@ export function buildSchemas() {
       .object({
         name: z.string().optional(),
         data: z.unknown().optional(),
-        opts: z.record(z.unknown()).optional(),
+        opts: z.record(z.string(), z.unknown()).optional(),
       })
       .optional(),
   });
