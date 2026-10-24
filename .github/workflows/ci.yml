@@ -29,6 +29,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Audit all dependencies
+        run: npm audit --include=dev --audit-level=low
+
       - name: Publisher regression checks
         run: node --test scripts/npm-release-checks.mjs
 
@@ -55,6 +58,12 @@ jobs:
 
       - name: Run unit tests (no Valkey needed)
         run: npx vitest run --exclude tests/integration.test.ts
+
+      - name: Legacy Zod 3 compatibility
+        run: |
+          npm install --no-save --package-lock=false zod@3.25.76 @hono/zod-validator@0.4.3
+          npx vitest run --exclude tests/integration.test.ts
+          npx tsc --noEmit
 
   test-no-zod:
     needs: quality
@@ -114,6 +123,9 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - run: npm ci
+
+      - name: Audit all dependencies
+        run: npm audit --include=dev --audit-level=low
       - run: npm run build
 
       - name: Set version

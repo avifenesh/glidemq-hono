@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2
+
+- Validate against glide-mq 0.20.0 and cover bounded scheduler inventory through the real SDK, including limit rejection and existing inventory behavior.
+- Keep the supported glide-mq peer range and existing HTTP behavior unchanged.
+- Fix record-schema construction for Zod 4 while retaining Zod 3 compatibility. Test with patched Zod 4 by default.
+- Accept Zod 4 validation-issue path types and stringify path parts safely. Refresh the optional validator development dependency.
+
 ## 0.5.1
 
 - Validate the adapter against glide-mq 0.17.0 and refresh its development lockfile.
