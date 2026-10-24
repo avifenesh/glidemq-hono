@@ -61,7 +61,7 @@ jobs:
 
       - name: Legacy Zod 3 compatibility
         run: |
-          npm install --no-save --package-lock=false zod@3.25.76 @hono/zod-validator@0.4.3
+          npm install --save-dev --save-exact zod@3.25.76 @hono/zod-validator@0.4.3
           npx vitest run --exclude tests/integration.test.ts
           npx tsc --noEmit
 
