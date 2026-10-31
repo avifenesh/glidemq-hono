@@ -97,7 +97,7 @@ See the [glide-mq docs](https://github.com/avifenesh/glide-mq) for the full AI p
 
 ## Configuration
 
-`GlideMQConfig` accepts `connection`, `queues`, `producers`, `prefix` (default `"glide"`), and `testing` (boolean). `GlideMQApiConfig` requires `authorize`. Restrict exposed names with `glideMQApi({ authorize: canManageQueues, queues: ["emails"], producers: ["emails"] })`.
+`GlideMQConfig` accepts `connection`, `queues`, `producers`, `prefix` (default `"glide"`), `testing` (boolean), and `serializer` (job data serializer, default JSON). `GlideMQApiConfig` requires `authorize`. Restrict exposed names with `glideMQApi({ authorize: canManageQueues, queues: ["emails"], producers: ["emails"] })`.
 
 ## Migrating to 0.5.0
 
