@@ -70,13 +70,14 @@
   "devDependencies": {
     "@hono/zod-validator": "^0.9.1",
     "@types/node": "^22.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.1.8",
     "glide-mq": "^0.20.0",
     "hono": "^4.13.5",
     "prettier": "^3.4.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.56.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.12",
     "zod": "^4.6.7"
   },
